@@ -61,19 +61,19 @@ func (c *stringConv) Bool() bool {
 	panic(values.UnexpectedKind(semantic.Function, semantic.Bool))
 }
 func (c *stringConv) Time() values.Time {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Time))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Time))
 }
 func (c *stringConv) Duration() values.Duration {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Duration))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Duration))
 }
 func (c *stringConv) Regexp() *regexp.Regexp {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Regexp))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Regexp))
 }
 func (c *stringConv) Array() values.Array {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Array))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Array))
 }
 func (c *stringConv) Object() values.Object {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Object))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Object))
 }
 func (c *stringConv) Function() values.Function {
 	return c
@@ -142,19 +142,19 @@ func (c *intConv) Bool() bool {
 	panic(values.UnexpectedKind(semantic.Function, semantic.Bool))
 }
 func (c *intConv) Time() values.Time {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Time))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Time))
 }
 func (c *intConv) Duration() values.Duration {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Duration))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Duration))
 }
 func (c *intConv) Regexp() *regexp.Regexp {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Regexp))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Regexp))
 }
 func (c *intConv) Array() values.Array {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Array))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Array))
 }
 func (c *intConv) Object() values.Object {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Object))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Object))
 }
 func (c *intConv) Function() values.Function {
 	return c
@@ -231,19 +231,19 @@ func (c *uintConv) Bool() bool {
 	panic(values.UnexpectedKind(semantic.Function, semantic.Bool))
 }
 func (c *uintConv) Time() values.Time {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Time))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Time))
 }
 func (c *uintConv) Duration() values.Duration {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Duration))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Duration))
 }
 func (c *uintConv) Regexp() *regexp.Regexp {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Regexp))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Regexp))
 }
 func (c *uintConv) Array() values.Array {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Array))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Array))
 }
 func (c *uintConv) Object() values.Object {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Object))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Object))
 }
 func (c *uintConv) Function() values.Function {
 	return c
@@ -320,19 +320,19 @@ func (c *floatConv) Bool() bool {
 	panic(values.UnexpectedKind(semantic.Function, semantic.Bool))
 }
 func (c *floatConv) Time() values.Time {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Time))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Time))
 }
 func (c *floatConv) Duration() values.Duration {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Duration))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Duration))
 }
 func (c *floatConv) Regexp() *regexp.Regexp {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Regexp))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Regexp))
 }
 func (c *floatConv) Array() values.Array {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Array))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Array))
 }
 func (c *floatConv) Object() values.Object {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Object))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Object))
 }
 func (c *floatConv) Function() values.Function {
 	return c
@@ -405,19 +405,19 @@ func (c *boolConv) Bool() bool {
 	panic(values.UnexpectedKind(semantic.Function, semantic.Bool))
 }
 func (c *boolConv) Time() values.Time {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Time))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Time))
 }
 func (c *boolConv) Duration() values.Duration {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Duration))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Duration))
 }
 func (c *boolConv) Regexp() *regexp.Regexp {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Regexp))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Regexp))
 }
 func (c *boolConv) Array() values.Array {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Array))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Array))
 }
 func (c *boolConv) Object() values.Object {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Object))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Object))
 }
 func (c *boolConv) Function() values.Function {
 	return c
@@ -510,19 +510,19 @@ func (c *timeConv) Bool() bool {
 	panic(values.UnexpectedKind(semantic.Function, semantic.Bool))
 }
 func (c *timeConv) Time() values.Time {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Time))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Time))
 }
 func (c *timeConv) Duration() values.Duration {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Duration))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Duration))
 }
 func (c *timeConv) Regexp() *regexp.Regexp {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Regexp))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Regexp))
 }
 func (c *timeConv) Array() values.Array {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Array))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Array))
 }
 func (c *timeConv) Object() values.Object {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Object))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Object))
 }
 func (c *timeConv) Function() values.Function {
 	return c
@@ -587,19 +587,19 @@ func (c *durationConv) Bool() bool {
 	panic(values.UnexpectedKind(semantic.Function, semantic.Bool))
 }
 func (c *durationConv) Time() values.Time {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Time))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Time))
 }
 func (c *durationConv) Duration() values.Duration {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Duration))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Duration))
 }
 func (c *durationConv) Regexp() *regexp.Regexp {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Regexp))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Regexp))
 }
 func (c *durationConv) Array() values.Array {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Array))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Array))
 }
 func (c *durationConv) Object() values.Object {
-	panic(values.UnexpectedKind(semantic.Float, semantic.Object))
+	panic(values.UnexpectedKind(semantic.Function, semantic.Object))
 }
 func (c *durationConv) Function() values.Function {
 	return c

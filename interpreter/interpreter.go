@@ -678,14 +678,14 @@ func ResolveFunction(f values.Function) (*semantic.FunctionExpression, error) {
 // Resolve rewrites the function resolving any identifiers not listed in the function params.
 func (f *function) Resolve() (semantic.Node, error) {
 	n := f.e.Copy()
-	node, err := f.resolveIdentifiers(n)
+	node, err := f.resolveIdentifiers(n, make(map[string]bool))
 	if err != nil {
 		return nil, err
 	}
 	return node, nil
 }
 
-func (f function) resolveIdentifiers(n semantic.Node) (semantic.Node, error) {
+func (f function) resolveIdentifiers(n semantic.Node, localIdents map[string]bool) (semantic.Node, error) {
 	switch n := n.(type) {
 	case *semantic.IdentifierExpression:
 		for _, p := range f.e.Params {
@@ -694,6 +694,10 @@ func (f function) resolveIdentifiers(n semantic.Node) (semantic.Node, error) {
 				return n, nil
 			}
 		}
+		if localIdents[n.Name] {
+			// Identifier is defined locally do not resolve
+			return n, nil
+		}
 		v, ok := f.scope.Lookup(n.Name)
 		if !ok {
 			return nil, fmt.Errorf("name %q does not exist in scope", n.Name)
@@ -701,80 +705,81 @@ func (f function) resolveIdentifiers(n semantic.Node) (semantic.Node, error) {
 		return resolveValue(v)
 	case *semantic.BlockStatement:
 		for i, s := range n.Body {
-			node, err := f.resolveIdentifiers(s)
+			node, err := f.resolveIdentifiers(s, localIdents)
 			if err != nil {
 				return nil, err
 			}
 			n.Body[i] = node.(semantic.Statement)
 		}
 	case *semantic.OptionStatement:
-		node, err := f.resolveIdentifiers(n.Declaration)
+		node, err := f.resolveIdentifiers(n.Declaration, localIdents)
 		if err != nil {
 			return nil, err
 		}
 		n.Declaration = node.(semantic.VariableDeclaration)
 	case *semantic.ExpressionStatement:
-		node, err := f.resolveIdentifiers(n.Expression)
+		node, err := f.resolveIdentifiers(n.Expression, localIdents)
 		if err != nil {
 			return nil, err
 		}
 		n.Expression = node.(semantic.Expression)
 	case *semantic.ReturnStatement:
-		node, err := f.resolveIdentifiers(n.Argument)
+		node, err := f.resolveIdentifiers(n.Argument, localIdents)
 		if err != nil {
 			return nil, err
 		}
 		n.Argument = node.(semantic.Expression)
 	case *semantic.NativeVariableDeclaration:
-		node, err := f.resolveIdentifiers(n.Init)
+		node, err := f.resolveIdentifiers(n.Init, localIdents)
 		if err != nil {
 			return nil, err
 		}
 		n.Init = node.(semantic.Expression)
+		localIdents[n.Identifier.Name] = true
 	case *semantic.CallExpression:
-		node, err := f.resolveIdentifiers(n.Arguments)
+		node, err := f.resolveIdentifiers(n.Arguments, localIdents)
 		if err != nil {
 			return nil, err
 		}
 		n.Arguments = node.(*semantic.ObjectExpression)
 	case *semantic.FunctionExpression:
-		node, err := f.resolveIdentifiers(n.Body)
+		node, err := f.resolveIdentifiers(n.Body, localIdents)
 		if err != nil {
 			return nil, err
 		}
 		n.Body = node
 	case *semantic.BinaryExpression:
-		node, err := f.resolveIdentifiers(n.Left)
+		node, err := f.resolveIdentifiers(n.Left, localIdents)
 		if err != nil {
 			return nil, err
 		}
 		n.Left = node.(semantic.Expression)
 
-		node, err = f.resolveIdentifiers(n.Right)
+		node, err = f.resolveIdentifiers(n.Right, localIdents)
 		if err != nil {
 			return nil, err
 		}
 		n.Right = node.(semantic.Expression)
 	case *semantic.UnaryExpression:
-		node, err := f.resolveIdentifiers(n.Argument)
+		node, err := f.resolveIdentifiers(n.Argument, localIdents)
 		if err != nil {
 			return nil, err
 		}
 		n.Argument = node.(semantic.Expression)
 	case *semantic.LogicalExpression:
-		node, err := f.resolveIdentifiers(n.Left)
+		node, err := f.resolveIdentifiers(n.Left, localIdents)
 		if err != nil {
 			return nil, err
 		}
 		n.Left = node.(semantic.Expression)
-		node, err = f.resolveIdentifiers(n.Right)
+		node, err = f.resolveIdentifiers(n.Right, localIdents)
 		if err != nil {
 			return nil, err
 		}
 		n.Right = node.(semantic.Expression)
 	case *semantic.ArrayExpression:
 		for i, el := range n.Elements {
-			node, err := f.resolveIdentifiers(el)
+			node, err := f.resolveIdentifiers(el, localIdents)
 			if err != nil {
 				return nil, err
 			}
@@ -782,32 +787,32 @@ func (f function) resolveIdentifiers(n semantic.Node) (semantic.Node, error) {
 		}
 	case *semantic.ObjectExpression:
 		for i, p := range n.Properties {
-			node, err := f.resolveIdentifiers(p)
+			node, err := f.resolveIdentifiers(p, localIdents)
 			if err != nil {
 				return nil, err
 			}
 			n.Properties[i] = node.(*semantic.Property)
 		}
 	case *semantic.ConditionalExpression:
-		node, err := f.resolveIdentifiers(n.Test)
+		node, err := f.resolveIdentifiers(n.Test, localIdents)
 		if err != nil {
 			return nil, err
 		}
 		n.Test = node.(semantic.Expression)
 
-		node, err = f.resolveIdentifiers(n.Alternate)
+		node, err = f.resolveIdentifiers(n.Alternate, localIdents)
 		if err != nil {
 			return nil, err
 		}
 		n.Alternate = node.(semantic.Expression)
 
-		node, err = f.resolveIdentifiers(n.Consequent)
+		node, err = f.resolveIdentifiers(n.Consequent, localIdents)
 		if err != nil {
 			return nil, err
 		}
 		n.Consequent = node.(semantic.Expression)
 	case *semantic.Property:
-		node, err := f.resolveIdentifiers(n.Value)
+		node, err := f.resolveIdentifiers(n.Value, localIdents)
 		if err != nil {
 			return nil, err
 		}
