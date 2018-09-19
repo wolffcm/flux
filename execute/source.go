@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/influxdata/flux"
 	"github.com/influxdata/flux/plan"
 )
 
@@ -14,6 +15,9 @@ type Node interface {
 type Source interface {
 	Node
 	Run(ctx context.Context)
+	Connect() error
+	Fetch() (bool, error)
+	Decode() flux.Table
 }
 
 type CreateSource func(spec plan.ProcedureSpec, id DatasetID, ctx Administration) (Source, error)
