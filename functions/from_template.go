@@ -97,25 +97,24 @@ func (c *TemplateIterator) Decode() (flux.Table, error) {
 type TemplateIterator struct {
 	// TODO: add fields you need to connect, fetch, etc.
 
-	source execute.Source
 	id   execute.DatasetID
 	ts   []execute.Transformation
 }
 
 func (c *TemplateIterator) Do(f func(flux.Table) error) error {
-	c.source.Connect()
+	c.Connect()
 
-	more, err := c.source.Fetch()
+	more, err := c.Fetch()
 	if err != nil {
 		return err
 	}
 	for more {
-		tbl, err := c.source.Decode()
+		tbl, err := c.Decode()
 		if err != nil {
 			return err
 		}
 		f(tbl)
-		more, err = c.source.Fetch()
+		more, err = c.Fetch()
 		if err != nil {
 			return err
 		}
