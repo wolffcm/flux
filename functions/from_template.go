@@ -52,6 +52,7 @@ type FromTemplateProcedureSpec struct {
 }
 
 func newFromTemplateProcedure(qs flux.OperationSpec, pa plan.Administration) (plan.ProcedureSpec, error) {
+	// TODO: copy over data from the OpSpec to the ProcedureSpec
 	//spec, ok := qs.(*FromTemplateOpSpec)
 	//if !ok {
 	//	return nil, fmt.Errorf("invalid spec type %T", qs)
@@ -73,6 +74,7 @@ func (s *FromTemplateProcedureSpec) Copy() plan.ProcedureSpec {
 }
 
 func createFromTemplateSource(prSpec plan.ProcedureSpec, dsid execute.DatasetID, a execute.Administration) (execute.Source, error) {
+	// TODO: copy over info from the ProcedureSpec you need to run your source..
 	//spec, ok := prSpec.(*FromTemplateProcedureSpec)
 	//if !ok {
 	//	return nil, fmt.Errorf("invalid spec type %T", prSpec)
@@ -81,7 +83,20 @@ func createFromTemplateSource(prSpec plan.ProcedureSpec, dsid execute.DatasetID,
 	return &TemplateIterator{}, nil
 }
 
+func (c *TemplateIterator) Connect() error {
+	return nil
+}
+func (c *TemplateIterator) Fetch() (bool, error) {
+	return false, nil
+}
+func (c *TemplateIterator) Decode() flux.Table {
+	return nil
+}
+
+
 type TemplateIterator struct {
+	// TODO: add fields you need to connect, fetch, etc.
+
 	source execute.Source
 	id   execute.DatasetID
 	ts   []execute.Transformation
@@ -106,15 +121,7 @@ func (c *TemplateIterator) Do(f func(flux.Table) error) error {
 	return nil
 }
 
-func (c *TemplateIterator) Connect() error {
-return nil
-}
-func (c *TemplateIterator) Fetch() (bool, error) {
-return false, nil
-}
-func (c *TemplateIterator) Decode() flux.Table {
-return nil
-}
+
 
 func (c *TemplateIterator) AddTransformation(t execute.Transformation) {
 	c.ts = append(c.ts, t)
