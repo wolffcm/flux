@@ -1,14 +1,11 @@
 package functions
 
 import (
-
 	"context"
 
 	"github.com/influxdata/flux"
 	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/plan"
 	"github.com/influxdata/flux/semantic"
-
 )
 
 const FromTemplateKind = "fromTemplate"
@@ -24,62 +21,13 @@ var fromTemplateSignature = semantic.FunctionSignature{
 	ReturnType: flux.TableObjectType,
 }
 
-func init() {
-	flux.RegisterFunction(FromTemplateKind, createFromTemplateOpSpec, fromTemplateSignature)
-	flux.RegisterOpSpec(FromTemplateKind, newFromTemplateOp)
-	plan.RegisterProcedureSpec(FromTemplateKind, newFromTemplateProcedure, FromTemplateKind)
-	execute.RegisterSource(FromTemplateKind, createFromSourceIterator)
-}
-
-func createFromTemplateOpSpec(args flux.Arguments, a *flux.Administration) (flux.OperationSpec, error) {
-	spec := new(FromTemplateOpSpec)
-
-	// TODO:  read in arguments of your custom function
-
-	return spec, nil
-}
-
-func newFromTemplateOp() flux.OperationSpec {
-	return new(FromTemplateOpSpec)
-}
-
-func (s *FromTemplateOpSpec) Kind() flux.OperationKind {
-	return FromTemplateKind
-}
-
-type FromTemplateProcedureSpec struct {
-
-}
-
-func newFromTemplateProcedure(qs flux.OperationSpec, pa plan.Administration) (plan.ProcedureSpec, error) {
-	// TODO: copy over data from the OpSpec to the ProcedureSpec
-	//spec, ok := qs.(*FromTemplateOpSpec)
-	//if !ok {
-	//	return nil, fmt.Errorf("invalid spec type %T", qs)
-	//}
-
-	return &FromTemplateProcedureSpec{
-
-	}, nil
-}
-
-func (s *FromTemplateProcedureSpec) Kind() plan.ProcedureKind {
-	return FromTemplateKind
-}
-
-func (s *FromTemplateProcedureSpec) Copy() plan.ProcedureSpec {
-	ns := new(FromTemplateProcedureSpec)
-
-	return ns
-}
-
 type SourceDecoder interface {
 	Connect() error
 	Fetch() (bool, error)
 	Decode() (flux.Table, error)
 }
 
-func createFromSourceIterator(decoder SourceDecoder, dsid execute.DatasetID, a execute.Administration) (execute.Source, error) {
+func CreateFromSourceIterator(decoder SourceDecoder, dsid execute.DatasetID, a execute.Administration) (execute.Source, error) {
 	return &SourceIterator{decoder: decoder, id: dsid}, nil
 }
 
