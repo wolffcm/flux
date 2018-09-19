@@ -16,6 +16,7 @@ import (
 )
 
 type Source struct {
+	b      execute.ColListTableBuilder
 	called bool
 	File   string
 	alloc  *execute.Allocator
@@ -30,6 +31,7 @@ func (s *Source) Connect() error {
 }
 
 func (s *Source) Fetch() (bool, error) {
+	// s.b := execute.NewColListTableBuilder(groupKey, s.alloc)
 	return !s.called, nil
 }
 
@@ -37,16 +39,8 @@ func (s *Source) Decode() (flux.Table, error) {
 	defer func() {
 		s.called = true
 	}()
-	ks := []flux.ColMeta{
-		flux.ColMeta{
-			Label: "_file",
-			Type:  flux.TString,
-		},
-	}
-	vs := []values.Value{
-		values.NewStringValue(s.File),
-	}
-	groupKey := execute.NewGroupKey(ks, vs)
+
+	groupKey := execute.NewGroupKey([]flux.ColMeta{}, []values.Value{})
 	b := execute.NewColListTableBuilder(groupKey, s.alloc)
 
 	cols := []flux.ColMeta{
@@ -66,6 +60,18 @@ func (s *Source) Decode() (flux.Table, error) {
 
 	buildBpfResult(b)
 	fmt.Printf("%+q\n", b.Cols())
+
+	tbl, err := b.Table()
+	if err != nil {
+		return nil, err
+	}
+
+	tbl.Do(func(r flux.ColReader) error {
+		fmt.Println(r.Strings(execute.ColIdx("_value", tbl.Cols())))
+		fmt.Println(r.Times(execute.ColIdx("_time", tbl.Cols())))
+		return nil
+	})
+	fmt.Println(b.Table())
 
 	return b.Table()
 }
@@ -93,7 +99,7 @@ const source string = `
 	
 	        return 0;
 	}
-	`
+`
 
 type readlineEvent struct {
 	Pid uint32
@@ -134,7 +140,6 @@ func buildBpfResult(b *execute.ColListTableBuilder) {
 		colIndex[col.Label] = i
 	}
 
-	fmt.Printf("%10s\t%s\n", "PID", "COMMAND")
 	go func() {
 		var event readlineEvent
 		for {
@@ -148,11 +153,8 @@ func buildBpfResult(b *execute.ColListTableBuilder) {
 			comm := string(event.Str[:bytes.IndexByte(event.Str[:], 0)])
 			b.AppendTime(colIndex["_time"], values.ConvertTime(time.Now()))
 			b.AppendString(colIndex["_value"], comm)
-
 		}
 	}()
-	b.AppendTime(colIndex["_time"], values.ConvertTime(time.Now()))
-	b.AppendString(colIndex["_value"], "THING")
 
 	perfMap.Start()
 	<-time.After(time.Second * 10)

@@ -1,7 +1,6 @@
 package functions
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/influxdata/flux"
@@ -86,86 +85,5 @@ func createFromEbpfSource(prSpec plan.ProcedureSpec, dsid execute.DatasetID, a e
 	s := ebpf.NewSource(a.Allocator())
 	s.File = spec.File
 
-	return &EbpfIterator{
-		source: s,
-		id:     dsid,
-	}, nil
-}
-
-func (c *EbpfIterator) Connect() error {
-	return nil
-}
-func (c *EbpfIterator) Fetch() (bool, error) {
-	return false, nil
-}
-func (c *EbpfIterator) Decode() (flux.Table, error) {
-	return nil, nil
-}
-
-type EbpfIterator struct {
-	source *ebpf.Source
-	id     execute.DatasetID
-	ts     []execute.Transformation
-}
-
-func (c *EbpfIterator) Do(f func(flux.Table) error) error {
-	c.source.Connect()
-
-	more, err := c.source.Fetch()
-	if err != nil {
-		return err
-	}
-	for more {
-		tbl, err := c.source.Decode()
-		if err != nil {
-			return err
-		}
-		f(tbl)
-		more, err = c.source.Fetch()
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (c *EbpfIterator) AddTransformation(t execute.Transformation) {
-	c.ts = append(c.ts, t)
-}
-
-func (c *EbpfIterator) Run(ctx context.Context) {
-	var err error
-	var max execute.Time
-	maxSet := true
-	err = c.Do(func(tbl flux.Table) error {
-		for _, t := range c.ts {
-			err := t.Process(c.id, tbl)
-			fmt.Println("Processed")
-			if err != nil {
-				return err
-			}
-			// if idx := execute.ColIdx(execute.DefaultStopColLabel, tbl.Key().Cols()); idx >= 0 {
-			// 	if stop := tbl.Key().ValueTime(idx); !maxSet || stop > max {
-			// 		max = stop
-			// 		maxSet = true
-			// 	}
-			// }
-		}
-		return nil
-	})
-	if err != nil {
-		goto FINISH
-	}
-
-	if maxSet {
-		for _, t := range c.ts {
-			t.UpdateWatermark(c.id, max)
-		}
-	}
-
-FINISH:
-	for _, t := range c.ts {
-		t.Finish(c.id, err)
-	}
+	return CreateFromSourceIterator(s, dsid, a)
 }
