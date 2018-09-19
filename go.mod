@@ -1,6 +1,8 @@
 module github.com/influxdata/flux
 
 require (
+	github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc // indirect
+	github.com/alecthomas/units v0.0.0-20151022065526-2efee857e7cf // indirect
 	github.com/andreyvit/diff v0.0.0-20170406064948-c7f18ee00883
 	github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973 // indirect
 	github.com/c-bata/go-prompt v0.2.2
@@ -42,14 +44,17 @@ require (
 	github.com/satori/go.uuid v1.2.0
 	github.com/segmentio/kafka-go v0.1.0 // indirect
 	github.com/sergi/go-diff v1.0.0 // indirect
+	github.com/sirupsen/logrus v1.0.6 // indirect
 	github.com/stretchr/testify v1.2.2 // indirect
 	go.uber.org/atomic v1.3.2 // indirect
 	go.uber.org/multierr v1.1.0 // indirect
 	go.uber.org/zap v1.9.1
+	golang.org/x/crypto v0.0.0-20180910181607-0e37d006457b // indirect
 	golang.org/x/net v0.0.0-20180826012351-8a410e7b638d // indirect
 	golang.org/x/sync v0.0.0-20180314180146-1d60e4601c6f // indirect
 	golang.org/x/sys v0.0.0-20180906133057-8cf3aee42992 // indirect
 	golang.org/x/text v0.3.0
 	golang.org/x/tools v0.0.0-20180904205237-0aa4b8830f48 // indirect
+	gopkg.in/alecthomas/kingpin.v2 v2.2.6 // indirect
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
 )
