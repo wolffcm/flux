@@ -144,8 +144,8 @@ func (c *CSVSource) Connect() error {
 func (c *CSVSource) Fetch() (bool, error) {
  return false, nil
 }
-func (c *CSVSource) Decode() flux.Table {
-	return nil
+func (c *CSVSource) Decode() (flux.Table, error) {
+	return nil, nil
 }
 
 func (c *CSVSource) AddTransformation(t execute.Transformation) {

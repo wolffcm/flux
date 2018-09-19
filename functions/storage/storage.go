@@ -94,8 +94,8 @@ func (c *source) Connect() error {
 func (c *source) Fetch() (bool, error) {
 	return false, nil
 }
-func (c *source) Decode() flux.Table {
-	return nil
+func (c *source) Decode() (flux.Table, error) {
+	return nil, nil
 }
 
 func (s *source) AddTransformation(t execute.Transformation) {

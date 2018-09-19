@@ -89,8 +89,8 @@ func (c *TemplateIterator) Connect() error {
 func (c *TemplateIterator) Fetch() (bool, error) {
 	return false, nil
 }
-func (c *TemplateIterator) Decode() flux.Table {
-	return nil
+func (c *TemplateIterator) Decode() (flux.Table, error) {
+	return nil, nil
 }
 
 
@@ -110,7 +110,10 @@ func (c *TemplateIterator) Do(f func(flux.Table) error) error {
 		return err
 	}
 	for more {
-		tbl := c.source.Decode()
+		tbl, err := c.source.Decode()
+		if err != nil {
+			return err
+		}
 		f(tbl)
 		more, err = c.source.Fetch()
 		if err != nil {

@@ -17,7 +17,7 @@ type Source interface {
 	Run(ctx context.Context)
 	Connect() error
 	Fetch() (bool, error)
-	Decode() flux.Table
+	Decode() (flux.Table, error)
 }
 
 type CreateSource func(spec plan.ProcedureSpec, id DatasetID, ctx Administration) (Source, error)
