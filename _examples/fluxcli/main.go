@@ -63,8 +63,6 @@ func runHttp() {
 	querier := NewQuerier()
 
 	http.HandleFunc("/v2/query", func(w http.ResponseWriter, r *http.Request) {
-		log.Println("handling request")
-
 		ctx := r.Context()
 
 		req, err := decodeQueryRequest(r)
@@ -73,6 +71,8 @@ func runHttp() {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+
+		log.Printf("handling request: %s\n", req.Query)
 
 		pr := req.ProxyRequest()
 		q, err := querier.c.Query(ctx, pr.Request.Compiler)
@@ -124,6 +124,8 @@ func runHttp() {
 			}
 		}
 	})
+
+	log.Printf("http server listening %s\n", *httpd)
 
 	http.ListenAndServe(*httpd, nil)
 }
