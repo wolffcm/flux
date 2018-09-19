@@ -64,13 +64,6 @@ func (s *Source) Decode() (flux.Table, error) {
 		b.AddCol(col)
 	}
 
-	cols = b.Cols()
-
-	colIndex := map[string]int{}
-	for i, col := range cols {
-		colIndex[col.Label] = i
-	}
-
 	buildBpfResult(b)
 
 	return b.Table()
@@ -135,6 +128,11 @@ func buildBpfResult(b *execute.ColListTableBuilder) {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, os.Kill)
 
+	colIndex := map[string]int{}
+	for i, col := range b.Cols() {
+		colIndex[col.Label] = i
+	}
+
 	fmt.Printf("%10s\t%s\n", "PID", "COMMAND")
 	go func() {
 		var event readlineEvent
@@ -149,7 +147,7 @@ func buildBpfResult(b *execute.ColListTableBuilder) {
 			comm := string(event.Str[:bytes.IndexByte(event.Str[:], 0)])
 
 			b.AppendTime(colIndex["_time"], values.ConvertTime(time.Now()))
-			b.AppendInt(colIndex["_value"], comm)
+			b.AppendString(colIndex["_value"], comm)
 
 		}
 	}()
