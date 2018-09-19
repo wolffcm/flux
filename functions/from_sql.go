@@ -5,13 +5,15 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/davecgh/go-spew/spew"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/influxdata/flux"
 	"github.com/influxdata/flux/execute"
 	"github.com/influxdata/flux/plan"
 	"github.com/influxdata/flux/semantic"
+	"github.com/influxdata/flux/values"
 	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
+	"time"
 )
 
 const FromSQLKind = "fromSQL"
@@ -38,7 +40,7 @@ func init() {
 	execute.RegisterSource(FromSQLKind, createFromSQLSource)
 }
 
-func createFromSQLOpSpec(args flux.Arguments, a *flux.Administration) (flux.OperationSpec, error) {
+func createFromSQLOpSpec(args flux.Arguments, administration *flux.Administration) (flux.OperationSpec, error) {
 	spec := new(FromSQLOpSpec)
 
 	if driverName, ok, err := args.GetString("driverName"); err != nil {
@@ -110,7 +112,7 @@ func createFromSQLSource(prSpec plan.ProcedureSpec, dsid execute.DatasetID, admi
 		return nil, fmt.Errorf("invalid spec type %T", prSpec)
 	}
 
-	if spec.DriverName != "postgres" {
+	if spec.DriverName != "postgres" && spec.DriverName != "mysql" {
 		return nil, fmt.Errorf("sql driver %s not supported", spec.DriverName)
 	}
 
@@ -123,9 +125,10 @@ type SQLIterator struct {
 	id             execute.DatasetID
 	data           flux.Result
 	ts             []execute.Transformation
-	administration *flux.Administration
+	administration execute.Administration
 	spec           *FromSQLProcedureSpec
 	db             *sql.DB
+	rows           *sql.Rows
 }
 
 func (c *SQLIterator) Connect() error {
@@ -144,39 +147,92 @@ func (c *SQLIterator) Fetch() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-
-	spew.Dump(rows)
+	c.rows = rows
 
 	return false, nil
 }
 
 func (c *SQLIterator) Decode() (flux.Table, error) {
-	// TODO implement sql package with decoder
-	// decoder := sql.NewResultDecoder(sql.ResultDecoderConfig{})
-	// result, err := decoder.Decode(strings.NewReader(rows))
-	// if err != nil {
-	// 	return nil, err
-	// }
-	return nil, nil
+	groupKey := execute.NewGroupKey(nil, nil)
+	builder := execute.NewColListTableBuilder(groupKey, c.administration.Allocator())
+
+	firstRow := true
+	for c.rows.Next() {
+		columnNames, err := c.rows.Columns()
+		if err != nil {
+			return nil, err
+		}
+		columns := make([]interface{}, len(columnNames))
+		columnPointers := make([]interface{}, len(columnNames))
+		for i := 0; i < len(columnNames); i++ {
+			columnPointers[i] = &columns[i]
+		}
+		if err := c.rows.Scan(columnPointers...); err != nil {
+			return nil, err
+		}
+
+		if firstRow {
+			for i, col := range columns {
+				var dataType flux.DataType
+				switch col.(type) {
+				case bool:
+					dataType = flux.TBool
+				case int64:
+					dataType = flux.TInt
+				case uint64:
+					dataType = flux.TUInt
+				case float64:
+					dataType = flux.TFloat
+				case string:
+					dataType = flux.TString
+				case time.Time:
+					dataType = flux.TTime
+				default:
+					execute.PanicUnknownType(flux.TInvalid)
+				}
+
+				builder.AddCol(flux.ColMeta{Label: columnNames[i], Type: dataType})
+			}
+			firstRow = false
+		}
+
+		for i, col := range columns {
+			switch col.(type) {
+			case bool:
+				builder.AppendBool(i, col.(bool))
+			case int64:
+				builder.AppendInt(i, col.(int64))
+			case uint64:
+				builder.AppendUInt(i, col.(uint64))
+			case float64:
+				builder.AppendFloat(i, col.(float64))
+			case string:
+				builder.AppendString(i, col.(string))
+			case time.Time:
+				builder.AppendTime(i, values.ConvertTime(col.(time.Time)))
+			default:
+				execute.PanicUnknownType(flux.TInvalid)
+			}
+		}
+	}
+
+	return builder.Table()
 }
 
 func (c *SQLIterator) Do(f func(flux.Table) error) error {
 	c.Connect()
 
-	more, err := c.Fetch()
+	_, err := c.Fetch()
 	if err != nil {
 		return err
 	}
-	for more {
-		tbl, err := c.Decode()
-		if err != nil {
-			return err
-		}
-		f(tbl)
-		more, err = c.Fetch()
-		if err != nil {
-			return err
-		}
+
+	tbl, err := c.Decode()
+	if err != nil {
+		return err
+	}
+	if err = f(tbl); err != nil {
+		return err
 	}
 
 	return nil
