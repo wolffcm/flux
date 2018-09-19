@@ -88,6 +88,16 @@ func NewSource(id execute.DatasetID, r Reader, readSpec ReadSpec, bounds execute
 	}
 }
 
+func (c *source) Connect() error {
+	return nil
+}
+func (c *source) Fetch() (bool, error) {
+	return false, nil
+}
+func (c *source) Decode() flux.Table {
+	return nil
+}
+
 func (s *source) AddTransformation(t execute.Transformation) {
 	s.ts = append(s.ts, t)
 }
