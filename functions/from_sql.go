@@ -14,6 +14,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
 	"time"
+	"reflect"
 )
 
 const FromSQLKind = "fromSQL"
@@ -136,6 +137,9 @@ func (c *SQLIterator) Connect() error {
 	if err != nil {
 		return err
 	}
+	if err = db.Ping(); err != nil {
+		return err
+	}
 	c.db = db
 
 	return nil
@@ -185,9 +189,13 @@ func (c *SQLIterator) Decode() (flux.Table, error) {
 					dataType = flux.TFloat
 				case string:
 					dataType = flux.TString
+				case []uint8:
+					// Hack for MySQL, might need to work with charset?
+					dataType = flux.TString
 				case time.Time:
 					dataType = flux.TTime
 				default:
+					fmt.Println(i, reflect.TypeOf(col))
 					execute.PanicUnknownType(flux.TInvalid)
 				}
 
@@ -208,6 +216,9 @@ func (c *SQLIterator) Decode() (flux.Table, error) {
 				builder.AppendFloat(i, col.(float64))
 			case string:
 				builder.AppendString(i, col.(string))
+			case []uint8:
+				// Hack for MySQL, might need to work with charset?
+				builder.AppendString(i, string(col.([]uint8)))
 			case time.Time:
 				builder.AppendTime(i, values.ConvertTime(col.(time.Time)))
 			default:
@@ -220,7 +231,9 @@ func (c *SQLIterator) Decode() (flux.Table, error) {
 }
 
 func (c *SQLIterator) Do(f func(flux.Table) error) error {
-	c.Connect()
+	if err := c.Connect(); err != nil {
+		return err
+	}
 
 	_, err := c.Fetch()
 	if err != nil {
@@ -231,11 +244,7 @@ func (c *SQLIterator) Do(f func(flux.Table) error) error {
 	if err != nil {
 		return err
 	}
-	if err = f(tbl); err != nil {
-		return err
-	}
-
-	return nil
+	return f(tbl)
 }
 
 func (c *SQLIterator) AddTransformation(t execute.Transformation) {
