@@ -5,8 +5,10 @@ import (
 	"time"
 
 	"github.com/influxdata/flux"
+	"github.com/influxdata/flux/compiler"
 	"github.com/influxdata/flux/execute"
 	"github.com/influxdata/flux/generate"
+	"github.com/influxdata/flux/interpreter"
 	"github.com/influxdata/flux/plan"
 	"github.com/influxdata/flux/semantic"
 )
@@ -14,9 +16,10 @@ import (
 const FromGenerateKind = "fromGenerate"
 
 type FromGenerateOpSpec struct {
-	Start time.Time
-	Stop  time.Time
-	Count int64
+	Start time.Time                    `json:"start"`
+	Stop  time.Time                    `json:"stop"`
+	Count int64                        `json:"count"`
+	Fn    *semantic.FunctionExpression `json:"fn"`
 }
 
 var fromGenerateSignature = semantic.FunctionSignature{
@@ -24,6 +27,7 @@ var fromGenerateSignature = semantic.FunctionSignature{
 		"start": semantic.Time,
 		"stop":  semantic.Time,
 		"count": semantic.Int,
+		"fn":    semantic.Function,
 	},
 	ReturnType: flux.TableObjectType,
 }
@@ -38,23 +42,32 @@ func init() {
 func createFromGenerateOpSpec(args flux.Arguments, a *flux.Administration) (flux.OperationSpec, error) {
 	spec := new(FromGenerateOpSpec)
 
-	// TODO:  read in arguments of your custom function
-	if t, ok, err := args.GetTime("start"); err != nil {
+	if t, err := args.GetRequiredTime("start"); err != nil {
 		return nil, err
-	} else if ok {
+	} else {
 		spec.Start = t.Time(time.Now())
 	}
 
-	if t, ok, err := args.GetTime("stop"); err != nil {
+	if t, err := args.GetRequiredTime("stop"); err != nil {
 		return nil, err
-	} else if ok {
+	} else {
 		spec.Stop = t.Time(time.Now())
 	}
 
-	if i, ok, err := args.GetInt("count"); err != nil {
+	if i, err := args.GetRequiredInt("count"); err != nil {
 		return nil, err
-	} else if ok {
+	} else {
 		spec.Count = i
+	}
+
+	if f, err := args.GetRequiredFunction("fn"); err != nil {
+		return nil, err
+	} else {
+		fn, err := interpreter.ResolveFunction(f)
+		if err != nil {
+			return nil, err
+		}
+		spec.Fn = fn
 	}
 
 	return spec, nil
@@ -72,6 +85,8 @@ type FromGenerateProcedureSpec struct {
 	Start time.Time
 	Stop  time.Time
 	Count int64
+	Param string
+	Fn    compiler.Func
 }
 
 func newFromGenerateProcedure(qs flux.OperationSpec, pa plan.Administration) (plan.ProcedureSpec, error) {
@@ -81,10 +96,16 @@ func newFromGenerateProcedure(qs flux.OperationSpec, pa plan.Administration) (pl
 		return nil, fmt.Errorf("invalid spec type %T", qs)
 	}
 
+	fn, param, err := compileFnParam(spec.Fn, semantic.Int, semantic.Int)
+	if err != nil {
+		return nil, err
+	}
 	return &FromGenerateProcedureSpec{
 		Count: spec.Count,
 		Start: spec.Start,
 		Stop:  spec.Stop,
+		Param: param,
+		Fn:    fn,
 	}, nil
 }
 
@@ -109,7 +130,8 @@ func createFromGenerateSource(prSpec plan.ProcedureSpec, dsid execute.DatasetID,
 	s.Start = spec.Start
 	s.Stop = spec.Stop
 	s.Count = spec.Count
+	s.Param = spec.Param
+	s.Fn = spec.Fn
 
 	return CreateFromSourceIterator(s, dsid, a)
 }
-
