@@ -65,6 +65,7 @@ func (s *Source) Decode() (flux.Table, error) {
 	}
 
 	buildBpfResult(b)
+	fmt.Printf("%+q\n", b.Cols())
 
 	return b.Table()
 }
@@ -145,12 +146,13 @@ func buildBpfResult(b *execute.ColListTableBuilder) {
 			}
 			// Convert C string (null-terminated) to Go string
 			comm := string(event.Str[:bytes.IndexByte(event.Str[:], 0)])
-
 			b.AppendTime(colIndex["_time"], values.ConvertTime(time.Now()))
 			b.AppendString(colIndex["_value"], comm)
 
 		}
 	}()
+	b.AppendTime(colIndex["_time"], values.ConvertTime(time.Now()))
+	b.AppendString(colIndex["_value"], "THING")
 
 	perfMap.Start()
 	<-time.After(time.Second * 10)

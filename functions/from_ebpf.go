@@ -34,8 +34,10 @@ func init() {
 func createFromEbpfOpSpec(args flux.Arguments, a *flux.Administration) (flux.OperationSpec, error) {
 	spec := new(FromEbpfOpSpec)
 
-	if t, ok, err := args.GetString("file"); err != nil {
+	if f, ok, err := args.GetString("file"); err != nil {
 		return nil, err
+	} else if ok {
+		spec.File = f
 	}
 
 	return spec, nil
@@ -101,7 +103,7 @@ func (c *EbpfIterator) Decode() (flux.Table, error) {
 }
 
 type EbpfIterator struct {
-	source *generate.Source
+	source *ebpf.Source
 	id     execute.DatasetID
 	ts     []execute.Transformation
 }
@@ -135,19 +137,20 @@ func (c *EbpfIterator) AddTransformation(t execute.Transformation) {
 func (c *EbpfIterator) Run(ctx context.Context) {
 	var err error
 	var max execute.Time
-	maxSet := false
+	maxSet := true
 	err = c.Do(func(tbl flux.Table) error {
 		for _, t := range c.ts {
 			err := t.Process(c.id, tbl)
+			fmt.Println("Processed")
 			if err != nil {
 				return err
 			}
-			if idx := execute.ColIdx(execute.DefaultStopColLabel, tbl.Key().Cols()); idx >= 0 {
-				if stop := tbl.Key().ValueTime(idx); !maxSet || stop > max {
-					max = stop
-					maxSet = true
-				}
-			}
+			// if idx := execute.ColIdx(execute.DefaultStopColLabel, tbl.Key().Cols()); idx >= 0 {
+			// 	if stop := tbl.Key().ValueTime(idx); !maxSet || stop > max {
+			// 		max = stop
+			// 		maxSet = true
+			// 	}
+			// }
 		}
 		return nil
 	})
