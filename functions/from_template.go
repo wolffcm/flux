@@ -14,8 +14,7 @@ import (
 const FromTemplateKind = "fromTemplate"
 
 type FromTemplateOpSpec struct {
-	CSV  string `json:"csv"`
-	File string `json:"file"`
+
 }
 
 var fromTemplateSignature = semantic.FunctionSignature{
@@ -83,7 +82,28 @@ func createFromTemplateSource(prSpec plan.ProcedureSpec, dsid execute.DatasetID,
 }
 
 type TemplateIterator struct {
+	source execute.Source
+	id   execute.DatasetID
+	ts   []execute.Transformation
+}
 
+func (c *TemplateIterator) Do(f func(flux.Table) error) error {
+	c.source.Connect()
+
+	more, err := c.source.Fetch()
+	if err != nil {
+		return err
+	}
+	for more {
+		tbl := c.source.Decode()
+		f(tbl)
+		more, err = c.source.Fetch()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (c *TemplateIterator) Connect() error {
@@ -97,40 +117,40 @@ return nil
 }
 
 func (c *TemplateIterator) AddTransformation(t execute.Transformation) {
-	//c.ts = append(c.ts, t)
+	c.ts = append(c.ts, t)
 }
 
 func (c *TemplateIterator) Run(ctx context.Context) {
-//	var err error
-//	var max execute.Time
-//	maxSet := false
-//	err = c.data.Tables().Do(func(tbl flux.Table) error {
-//		for _, t := range c.ts {
-//			err := t.Process(c.id, tbl)
-//			if err != nil {
-//				return err
-//			}
-//			if idx := execute.ColIdx(execute.DefaultStopColLabel, tbl.Key().Cols()); idx >= 0 {
-//				if stop := tbl.Key().ValueTime(idx); !maxSet || stop > max {
-//					max = stop
-//					maxSet = true
-//				}
-//			}
-//		}
-//		return nil
-//	})
-//	if err != nil {
-//		goto FINISH
-//	}
-//
-//	if maxSet {
-//		for _, t := range c.ts {
-//			t.UpdateWatermark(c.id, max)
-//		}
-//	}
-//
-//FINISH:
-//	for _, t := range c.ts {
-//		t.Finish(c.id, err)
-//	}
+	var err error
+	var max execute.Time
+	maxSet := false
+	err = c.Do(func(tbl flux.Table) error {
+		for _, t := range c.ts {
+			err := t.Process(c.id, tbl)
+			if err != nil {
+				return err
+			}
+			if idx := execute.ColIdx(execute.DefaultStopColLabel, tbl.Key().Cols()); idx >= 0 {
+				if stop := tbl.Key().ValueTime(idx); !maxSet || stop > max {
+					max = stop
+					maxSet = true
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		goto FINISH
+	}
+
+	if maxSet {
+		for _, t := range c.ts {
+			t.UpdateWatermark(c.id, max)
+		}
+	}
+
+FINISH:
+	for _, t := range c.ts {
+		t.Finish(c.id, err)
+	}
 }
