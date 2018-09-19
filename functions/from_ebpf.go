@@ -11,7 +11,7 @@ import (
 	"github.com/influxdata/flux/semantic"
 )
 
-const FromEbpfOpSpec = "fromEbpf"
+const FromEbpfKind = "fromEbpf"
 
 type FromEbpfOpSpec struct {
 	File string
@@ -25,10 +25,10 @@ var fromEbpfSignature = semantic.FunctionSignature{
 }
 
 func init() {
-	flux.RegisterFunction(FromEbpfkind, createFromEbpfOpSpec, fromEbpfSignature)
-	flux.RegisterOpSpec(fromEbpfKind, newFromEbpfOp)
-	plan.RegisterProcedureSpec(fromEbpfKind, newFromEbpfProcedure, fromEbpfKind)
-	execute.RegisterSource(fromEbpfKind, createFromEbpfSource)
+	flux.RegisterFunction(FromEbpfKind, createFromEbpfOpSpec, fromEbpfSignature)
+	flux.RegisterOpSpec(FromEbpfKind, newFromEbpfOp)
+	plan.RegisterProcedureSpec(FromEbpfKind, newFromEbpfProcedure, FromEbpfKind)
+	execute.RegisterSource(FromEbpfKind, createFromEbpfSource)
 }
 
 func createFromEbpfOpSpec(args flux.Arguments, a *flux.Administration) (flux.OperationSpec, error) {
@@ -46,7 +46,7 @@ func newFromEbpfOp() flux.OperationSpec {
 }
 
 func (s *FromEbpfOpSpec) Kind() flux.OperationKind {
-	return fromEbpfKind
+	return FromEbpfKind
 }
 
 type FromEbpfProcedureSpec struct {
@@ -61,14 +61,12 @@ func newFromEbpfProcedure(qs flux.OperationSpec, pa plan.Administration) (plan.P
 	}
 
 	return &FromEbpfProcedureSpec{
-		File:  spec.File,
-		Start: spec.Start,
-		Stop:  spec.Stop,
+		File: spec.File,
 	}, nil
 }
 
 func (s *FromEbpfProcedureSpec) Kind() plan.ProcedureKind {
-	return fromEbpfKind
+	return FromEbpfKind
 }
 
 func (s *FromEbpfProcedureSpec) Copy() plan.ProcedureSpec {
