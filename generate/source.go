@@ -4,16 +4,19 @@ import (
 	"time"
 
 	"github.com/influxdata/flux"
+	"github.com/influxdata/flux/compiler"
 	"github.com/influxdata/flux/execute"
 	"github.com/influxdata/flux/values"
 )
 
 type Source struct {
-	called bool
-	Start  time.Time
-	Stop   time.Time
-	Count  int64
-	alloc  *execute.Allocator
+	done  bool
+	Start time.Time
+	Stop  time.Time
+	Count int64
+	alloc *execute.Allocator
+	Fn    compiler.Func
+	Param string
 }
 
 func NewSource(a *execute.Allocator) *Source {
@@ -25,12 +28,12 @@ func (s *Source) Connect() error {
 }
 
 func (s *Source) Fetch() (bool, error) {
-	return !s.called, nil
+	return !s.done, nil
 }
 
 func (s *Source) Decode() (flux.Table, error) {
 	defer func() {
-		s.called = true
+		s.done = true
 	}()
 	ks := []flux.ColMeta{
 		flux.ColMeta{
@@ -72,9 +75,16 @@ func (s *Source) Decode() (flux.Table, error) {
 	}
 
 	deltaT := s.Stop.Sub(s.Start) / time.Duration(s.Count)
+	timeIdx := execute.ColIdx("_time", cols)
+	valueIdx := execute.ColIdx("_value", cols)
 	for i := 0; i < int(s.Count); i++ {
-		b.AppendTime(colIndex["_time"], values.ConvertTime(s.Start.Add(time.Duration(i)*deltaT)))
-		b.AppendInt(colIndex["_value"], int64(i))
+		b.AppendTime(timeIdx, values.ConvertTime(s.Start.Add(time.Duration(i)*deltaT)))
+		scope := map[string]values.Value{s.Param: values.NewIntValue(int64(i))}
+		v, err := s.Fn.EvalInt(scope)
+		if err != nil {
+			return nil, err
+		}
+		b.AppendInt(valueIdx, v)
 	}
 
 	return b.Table()
