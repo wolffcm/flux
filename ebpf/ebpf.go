@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/signal"
 	"time"
@@ -16,10 +17,10 @@ import (
 )
 
 type Source struct {
-	b      execute.ColListTableBuilder
-	called bool
-	File   string
-	alloc  *execute.Allocator
+	called   bool
+	File     string
+	Duration int64
+	alloc    *execute.Allocator
 }
 
 func NewSource(a *execute.Allocator) *Source {
@@ -31,7 +32,6 @@ func (s *Source) Connect() error {
 }
 
 func (s *Source) Fetch() (bool, error) {
-	// s.b := execute.NewColListTableBuilder(groupKey, s.alloc)
 	return !s.called, nil
 }
 
@@ -58,68 +58,39 @@ func (s *Source) Decode() (flux.Table, error) {
 		b.AddCol(col)
 	}
 
-	buildBpfResult(b)
-	fmt.Printf("%+q\n", b.Cols())
-
-	tbl, err := b.Table()
+	err := s.buildBpfResult(b)
 	if err != nil {
 		return nil, err
 	}
 
-	tbl.Do(func(r flux.ColReader) error {
-		fmt.Println(r.Strings(execute.ColIdx("_value", tbl.Cols())))
-		fmt.Println(r.Times(execute.ColIdx("_time", tbl.Cols())))
-		return nil
-	})
-	fmt.Println(b.Table())
-
 	return b.Table()
 }
-
-// temporary program here
-const source string = `
-	#include <uapi/linux/ptrace.h>
-	
-	struct readline_event_t {
-	        u32 pid;
-	        char str[80];
-	} __attribute__((packed));
-	
-	BPF_PERF_OUTPUT(readline_events);
-	
-	int get_return_value(struct pt_regs *ctx) {
-	        struct readline_event_t event = {};
-	        u32 pid;
-	        if (!PT_REGS_RC(ctx))
-	                return 0;
-	        pid = bpf_get_current_pid_tgid();
-	        event.pid = pid;
-	        bpf_probe_read(&event.str, sizeof(event.str), (void *)PT_REGS_RC(ctx));
-	        readline_events.perf_submit(ctx, &event, sizeof(event));
-	
-	        return 0;
-	}
-`
 
 type readlineEvent struct {
 	Pid uint32
 	Str [80]byte
 }
 
-func buildBpfResult(b *execute.ColListTableBuilder) {
-	m := bpf.NewModule(source, []string{})
+func (s *Source) buildBpfResult(b *execute.ColListTableBuilder) error {
+	if s.Duration < 1 {
+		s.Duration = 20
+	}
+	sourceBytes, err := ioutil.ReadFile(s.File)
+	if err != nil {
+		return fmt.Errorf("Failed to read file: %s", err)
+	}
+
+	m := bpf.NewModule(string(sourceBytes), []string{})
 	defer m.Close()
 
 	readlineUretprobe, err := m.LoadUprobe("get_return_value")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load get_return_value: %s\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Failed to load get_return_value: %s", err)
 	}
 
 	err = m.AttachUretprobe("/bin/bash", "readline", readlineUretprobe, -1)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to attach return_value: %s\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Failed to attach return_value: %s", err)
 	}
 
 	table := bpf.NewTable(m.TableId("readline_events"), m)
@@ -128,8 +99,7 @@ func buildBpfResult(b *execute.ColListTableBuilder) {
 
 	perfMap, err := bpf.InitPerfMap(table, channel)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to init perf map: %s\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Failed to init perf map: %s", err)
 	}
 
 	sig := make(chan os.Signal, 1)
@@ -155,8 +125,11 @@ func buildBpfResult(b *execute.ColListTableBuilder) {
 			b.AppendString(colIndex["_value"], comm)
 		}
 	}()
+	fmt.Println("THIKNGA", s.Duration)
 
 	perfMap.Start()
-	<-time.After(time.Second * 10)
+	<-time.After(time.Second * time.Duration(s.Duration))
 	perfMap.Stop()
+
+	return nil
 }
