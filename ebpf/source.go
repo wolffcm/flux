@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/influxdata/flux"
 	"github.com/influxdata/flux/execute"
@@ -147,14 +148,13 @@ func buildBpfResult(b *execute.ColListTableBuilder) {
 			// Convert C string (null-terminated) to Go string
 			comm := string(event.Str[:bytes.IndexByte(event.Str[:], 0)])
 
-			b.AppendTime(colIndex["_time"], values.ConvertTime(time.Now())))
+			b.AppendTime(colIndex["_time"], values.ConvertTime(time.Now()))
 			b.AppendInt(colIndex["_value"], comm)
 
 		}
 	}()
 
 	perfMap.Start()
-	<-time.After(time.Second*10)
+	<-time.After(time.Second * 10)
 	perfMap.Stop()
 }
-
