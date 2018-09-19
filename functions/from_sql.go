@@ -104,7 +104,7 @@ func (s *FromSQLProcedureSpec) Copy() plan.ProcedureSpec {
 	return ns
 }
 
-func createFromSQLSource(prSpec plan.ProcedureSpec, dsid execute.DatasetID, a execute.Administration) (execute.Source, error) {
+func createFromSQLSource(prSpec plan.ProcedureSpec, dsid execute.DatasetID, administration execute.Administration) (execute.Source, error) {
 	spec, ok := prSpec.(*FromSQLProcedureSpec)
 	if !ok {
 		return nil, fmt.Errorf("invalid spec type %T", prSpec)
@@ -114,17 +114,18 @@ func createFromSQLSource(prSpec plan.ProcedureSpec, dsid execute.DatasetID, a ex
 		return nil, fmt.Errorf("sql driver %s not supported", spec.DriverName)
 	}
 
-	SQLIterator := SQLIterator{id: dsid, spec: spec}
+	SQLIterator := SQLIterator{id: dsid, spec: spec, administration: administration}
 
 	return &SQLIterator, nil
 }
 
 type SQLIterator struct {
-	id   execute.DatasetID
-	data flux.Result
-	ts   []execute.Transformation
-	spec *FromSQLProcedureSpec
-	db   *sql.DB
+	id             execute.DatasetID
+	data           flux.Result
+	ts             []execute.Transformation
+	administration *flux.Administration
+	spec           *FromSQLProcedureSpec
+	db             *sql.DB
 }
 
 func (c *SQLIterator) Connect() error {
