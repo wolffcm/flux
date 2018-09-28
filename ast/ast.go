@@ -27,6 +27,7 @@ type Node interface {
 	Type() string // Type property is a string that contains the variant type of the node
 	Location() *SourceLocation
 	Copy() Node
+	String() string
 
 	// All node must support json marshalling
 	json.Marshaler
