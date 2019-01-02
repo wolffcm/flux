@@ -8,12 +8,11 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"syscall"
 
-	prompt "github.com/c-bata/go-prompt"
+	"github.com/chzyer/readline"
 	"github.com/influxdata/flux"
 	"github.com/influxdata/flux/execute"
 	"github.com/influxdata/flux/interpreter"
@@ -43,13 +42,18 @@ func New(q Querier) *REPL {
 	}
 }
 
-func (r *REPL) Run() {
-	p := prompt.New(
-		r.input,
-		r.completer,
-		prompt.OptionPrefix("> "),
-		prompt.OptionTitle("flux"),
-	)
+func (r *REPL) Run() error {
+	rl, err := readline.NewEx(&readline.Config{
+		Prompt:        "> ",
+		HistoryFile:   ".flux-history",
+		VimMode:       true,
+		AutoCompleter: &completer{r:r},
+	})
+	if err != nil {
+		return err
+	}
+	defer rl.Close()
+
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT)
 	go func() {
@@ -57,7 +61,23 @@ func (r *REPL) Run() {
 			r.cancel()
 		}
 	}()
-	p.Run()
+
+	for {
+		line, err := rl.Readline()
+		if err != nil {
+			return err
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		v, err := r.executeLine(line)
+		if err != nil {
+			fmt.Println("Error:", err)
+		} else if v != nil {
+			fmt.Println(v)
+		}
+	}
 }
 
 func (r *REPL) cancel() {
@@ -78,34 +98,6 @@ func (r *REPL) clearCancel() {
 	r.setCancel(nil)
 }
 
-func (r *REPL) completer(d prompt.Document) []prompt.Suggest {
-	names := r.interpreter.GlobalScope().Names()
-	sort.Strings(names)
-
-	s := make([]prompt.Suggest, 0, len(names))
-	for _, n := range names {
-		if n == "_" || !strings.HasPrefix(n, "_") {
-			s = append(s, prompt.Suggest{Text: n})
-		}
-	}
-	if d.Text == "" || strings.HasPrefix(d.Text, "@") {
-		root := "./" + strings.TrimPrefix(d.Text, "@")
-		fluxFiles, err := getFluxFiles(root)
-		if err == nil {
-			for _, fName := range fluxFiles {
-				s = append(s, prompt.Suggest{Text: "@" + fName})
-			}
-		}
-		dirs, err := getDirs(root)
-		if err == nil {
-			for _, fName := range dirs {
-				s = append(s, prompt.Suggest{Text: "@" + fName + string(os.PathSeparator)})
-			}
-		}
-	}
-
-	return prompt.FilterHasPrefix(s, d.GetWordBeforeCursor(), true)
-}
 
 func (r *REPL) Input(t string) error {
 	_, err := r.executeLine(t)
@@ -241,4 +233,38 @@ func LoadQuery(q string) (string, error) {
 	}
 
 	return q, nil
+}
+
+
+type completer{
+	r *REPL
+}
+
+func (c *completer) Do(d prompt.Document) []prompt.Suggest {
+	names := r.interpreter.GlobalScope().Names()
+	sort.Strings(names)
+
+	s := make([]prompt.Suggest, 0, len(names))
+	for _, n := range names {
+		if n == "_" || !strings.HasPrefix(n, "_") {
+			s = append(s, prompt.Suggest{Text: n})
+		}
+	}
+	if d.Text == "" || strings.HasPrefix(d.Text, "@") {
+		root := "./" + strings.TrimPrefix(d.Text, "@")
+		fluxFiles, err := getFluxFiles(root)
+		if err == nil {
+			for _, fName := range fluxFiles {
+				s = append(s, prompt.Suggest{Text: "@" + fName})
+			}
+		}
+		dirs, err := getDirs(root)
+		if err == nil {
+			for _, fName := range dirs {
+				s = append(s, prompt.Suggest{Text: "@" + fName + string(os.PathSeparator)})
+			}
+		}
+	}
+
+	return prompt.FilterHasPrefix(s, d.GetWordBeforeCursor(), true)
 }
