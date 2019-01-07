@@ -21,8 +21,9 @@ func check(n Node) int {
 	// TODO(jsternberg): Fill in the details for how we retrieve errors.
 	switch n := n.(type) {
 	case *BadStatement:
+		loc := n.Location()
 		n.Errors = append(n.Errors, Error{
-			Msg: fmt.Sprintf("invalid statement: %s", n.Text),
+			Msg: fmt.Sprintf("invalid statement %s:%d:%d-%d:%d: %s", loc.File, loc.Start.Line, loc.Start.Column, loc.End.Line, loc.End.Column, n.Text),
 		})
 		return len(n.Errors)
 	}

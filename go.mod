@@ -8,6 +8,7 @@ require (
 	github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973 // indirect
 	github.com/c-bata/go-prompt v0.2.2
 	github.com/cespare/xxhash v1.1.0
+	github.com/dave/jennifer v1.2.0
 	github.com/go-sql-driver/mysql v1.4.0
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db // indirect
 	github.com/google/go-cmp v0.2.0
@@ -19,6 +20,7 @@ require (
 	github.com/mattn/go-runewidth v0.0.3 // indirect
 	github.com/mattn/go-tty v0.0.0-20180907095812-13ff1204f104 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
+	github.com/mitchellh/reflectwalk v1.0.0
 	github.com/opentracing/opentracing-go v1.0.2
 	github.com/pierrec/lz4 v2.0.5+incompatible // indirect
 	github.com/pkg/errors v0.8.0
@@ -37,6 +39,7 @@ require (
 	golang.org/x/crypto v0.0.0-20181203042331-505ab145d0a9 // indirect
 	golang.org/x/exp v0.0.0-20181112044915-a3060d491354
 	golang.org/x/sys v0.0.0-20181205085412-a5c9d58dba9a // indirect
+	golang.org/x/text v0.3.0
 	golang.org/x/tools v0.0.0-20181221154417-3ad2d988d5e2 // indirect
 	gonum.org/v1/gonum v0.0.0-20181121035319-3f7ecaa7e8ca
 	gopkg.in/src-d/go-git.v4 v4.8.1

@@ -5,6 +5,7 @@ package builtin
 
 import (
 	"github.com/influxdata/flux"
+	_ "github.com/influxdata/flux/functions/builtin"         // Import the built-in packages
 	_ "github.com/influxdata/flux/functions/inputs"          // Import the built-in inputs
 	_ "github.com/influxdata/flux/functions/outputs"         // Import the built-in outputs
 	_ "github.com/influxdata/flux/functions/tests"           // Import the built-in tests

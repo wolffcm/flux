@@ -141,7 +141,7 @@ with multiple lines"`,
 		},
 		{
 			name:   "package",
-			script: `package foo`,
+			script: "package foo\n",
 		},
 		{
 			name: "imports",
@@ -159,12 +159,14 @@ foo.from(bucket: "testdb")
 			name: "no_import",
 			script: `package foo
 
+
 from(bucket: "testdb")
 	|> range(start: 2018-05-20T19:53:26Z)`,
 		},
 		{
 			name: "package_import",
 			script: `package foo
+
 
 import "path/foo"
 import bar "path/bar"
