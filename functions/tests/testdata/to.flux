@@ -1,3 +1,5 @@
+package testdata
+
 option task = {
     name: "test",
     every: 10m,

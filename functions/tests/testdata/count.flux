@@ -1,3 +1,5 @@
+package testdata
+
 option now = () => 2018-12-18T21:00:00Z
 
 inData = "

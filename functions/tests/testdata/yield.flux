@@ -1,3 +1,5 @@
+package testdata
+
 inData = "
 #datatype,string,long,dateTime:RFC3339,dateTime:RFC3339,dateTime:RFC3339,double,string,string,string,string
 #group,false,false,false,false,false,false,true,true,true,true
@@ -39,6 +41,6 @@ got = indata |> t_yield() |> yield(name: "5")
 want = testLoadStorage(csv: outData) |> yield(name:"6")
 //assertEquals(name: "yield", want: want, got: got)
 //testingTest(name: "yield",
-            input: testLoadStorage(csv: inData),
-            want: testLoadMem(csv: outData),
-            test: t_yield)
+//            input: testLoadStorage(csv: inData),
+//            want: testLoadMem(csv: outData),
+//            test: t_yield)

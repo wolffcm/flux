@@ -1,3 +1,5 @@
+package testdata
+
 inData = "
 #datatype,string,long,dateTime:RFC3339,dateTime:RFC3339,dateTime:RFC3339,double,string,string,string
 #group,false,false,true,true,false,false,true,true,true

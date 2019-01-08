@@ -1,3 +1,5 @@
+package testdata
+
 inData = "
 #datatype,string,long,dateTime:RFC3339,dateTime:RFC3339,dateTime:RFC3339,double,string,string,string,string
 #group,false,false,false,false,false,false,true,true,true,true
@@ -27,7 +29,7 @@ outData = "
 #group,true,true
 #default,,
 ,error,reference
-,"rename error: column ""old"" doesn't exist",
+,\"rename error: column \"\"old\"\" doesn't exist\",
 "
 
 drop_before_rename = (table=<-) =>
