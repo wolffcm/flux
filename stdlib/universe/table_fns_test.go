@@ -1,13 +1,17 @@
 package universe_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/influxdata/flux"
 	"github.com/influxdata/flux/execute/executetest"
 	"github.com/influxdata/flux/interpreter"
+	"github.com/influxdata/flux/lang"
+	"github.com/influxdata/flux/memory"
 	"github.com/influxdata/flux/semantic"
 	"github.com/influxdata/flux/stdlib/universe"
 	"github.com/influxdata/flux/values"
@@ -129,6 +133,16 @@ func evalOrFail(t *testing.T, script string, mutator flux.ScopeMutator) interpre
 	return s
 }
 
+type streamEvaluator struct{}
+
+func (streamEvaluator) Eval(to *flux.TableObject) (flux.Query, error) {
+	p, err := lang.CompileTableObject(to, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	return p.Start(context.Background(), new(memory.Allocator))
+}
+
 func TestTableFind_Call(t *testing.T) {
 	testCases := []struct {
 		name    string
@@ -214,7 +228,7 @@ func TestTableFind_Call(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			f := universe.NewTableFindFunction()
+			f := universe.NewTableFindFunction(&streamEvaluator{})
 			res, err := f.Function().Call(values.NewObjectWithValues(map[string]values.Value{
 				"tables": to,
 				"fn": values.NewFunction("",
@@ -261,6 +275,7 @@ t = inj |> tableFind(fn: (key) => key.user == "user1")`
 
 	s := evalOrFail(t, script, func(s interpreter.Scope) {
 		s.Set("inj", to)
+		lang.BindContextAwareValues(s, &streamEvaluator{})
 	})
 	tbl := mustLookup(s, "t")
 
@@ -303,6 +318,7 @@ t = inj |> tableFind(fn: (key) => key.user == "user1")`
 
 	s := evalOrFail(t, script, func(s interpreter.Scope) {
 		s.Set("inj", to)
+		lang.BindContextAwareValues(s, &streamEvaluator{})
 	})
 	tbl := mustLookup(s, "t")
 
@@ -365,6 +381,7 @@ recordOK = r._time == 2018-05-22T19:53:26Z and r._value == 1.0 and r._measuremen
 
 	s := evalOrFail(t, script, func(s interpreter.Scope) {
 		s.Set("inj", to)
+		lang.BindContextAwareValues(s, &streamEvaluator{})
 	})
 
 	for _, id := range []string{

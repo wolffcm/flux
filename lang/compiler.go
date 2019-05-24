@@ -5,14 +5,16 @@ import (
 	"log"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/influxdata/flux"
 	"github.com/influxdata/flux/ast"
 	"github.com/influxdata/flux/execute"
 	"github.com/influxdata/flux/internal/spec"
+	"github.com/influxdata/flux/interpreter"
 	"github.com/influxdata/flux/memory"
 	"github.com/influxdata/flux/plan"
 	"github.com/pkg/errors"
-	"go.uber.org/zap"
 )
 
 const (
@@ -104,53 +106,15 @@ func CompileAST(astPkg *ast.Package, now time.Time, opts ...CompileOption) *AstP
 	}
 }
 
-// CompileTableObject evaluates a TableObject and produces a flux.Program.
-// now parameter must be non-zero, that is the default now time should be set before compiling.
-func CompileTableObject(to *flux.TableObject, now time.Time, opts ...CompileOption) (*Program, error) {
-	o := applyOptions(opts...)
-	s := spec.FromTableObject(to, now)
-	if o.verbose {
-		log.Println("Query Spec: ", flux.Formatted(s, flux.FmtJSON))
-	}
-	ps, err := buildPlan(s, o)
-	if err != nil {
-		return nil, err
-	}
-	return &Program{
-		opts:     o,
-		PlanSpec: ps,
-	}, nil
-}
-
 func WalkIR(astPkg *ast.Package, f func(o *flux.Operation) error) error {
-
-	if spec, err := spec.FromAST(context.Background(), astPkg, time.Now()); err != nil {
+	if s, err := spec.FromAST(context.Background(), astPkg, time.Now()); err != nil {
 		return err
 	} else {
-		return spec.Walk(f)
+		return s.Walk(f)
 	}
-
 }
 
-func buildPlan(spec *flux.Spec, opts *compileOptions) (*plan.Spec, error) {
-	pb := plan.PlannerBuilder{}
-
-	planOptions := opts.planOptions
-
-	lopts := planOptions.logical
-	popts := planOptions.physical
-
-	pb.AddLogicalOptions(lopts...)
-	pb.AddPhysicalOptions(popts...)
-
-	ps, err := pb.Build().Plan(spec)
-	if err != nil {
-		return nil, err
-	}
-	return ps, nil
-}
-
-// FluxCompiler compiles a Flux script into a spec.
+// FluxCompiler compiles a Flux script into a program.
 type FluxCompiler struct {
 	Query string `json:"query"`
 }
@@ -164,7 +128,7 @@ func (c FluxCompiler) CompilerType() flux.CompilerType {
 	return FluxCompilerType
 }
 
-// ASTCompiler implements Compiler by producing a Spec from an AST.
+// ASTCompiler implements Compiler by producing a program from an AST.
 type ASTCompiler struct {
 	AST *ast.Package `json:"ast"`
 	Now time.Time
@@ -186,23 +150,6 @@ func (ASTCompiler) CompilerType() flux.CompilerType {
 // PrependFile prepends a file onto the compiler's list of package files.
 func (c *ASTCompiler) PrependFile(file *ast.File) {
 	c.AST.Files = append([]*ast.File{file}, c.AST.Files...)
-}
-
-// TableObjectCompiler compiles a TableObject into an executable flux.Program.
-// It is not added to CompilerMappings and it is not serializable, because
-// it is impossible to use it outside of the context of an ongoing execution.
-type TableObjectCompiler struct {
-	Tables *flux.TableObject
-	Now    time.Time
-}
-
-func (c *TableObjectCompiler) Compile(ctx context.Context) (flux.Program, error) {
-	// Ignore context, it will be provided upon Program Start.
-	return CompileTableObject(c.Tables, c.Now)
-}
-
-func (*TableObjectCompiler) CompilerType() flux.CompilerType {
-	panic("TableObjectCompiler is not associated with a CompilerType")
 }
 
 type DependenciesAwareProgram interface {
@@ -295,7 +242,16 @@ func (p *AstProgram) Start(ctx context.Context, alloc *memory.Allocator) (flux.Q
 	if p.Now.IsZero() {
 		p.Now = time.Now()
 	}
-	s, err := spec.FromAST(ctx, p.Ast, p.Now)
+	s, err := spec.FromAST(ctx, p.Ast, p.Now, func(scope interpreter.Scope) {
+		BindContextAwareValues(scope, &executor{
+			opts:   p.opts,
+			ctx:    ctx,
+			now:    p.Now,
+			alloc:  alloc,
+			deps:   p.Dependencies,
+			logger: p.Logger,
+		})
+	})
 	if err != nil {
 		return nil, errors.Wrap(err, "error in evaluating AST while starting program")
 	}
@@ -309,4 +265,22 @@ func (p *AstProgram) Start(ctx context.Context, alloc *memory.Allocator) (flux.Q
 	p.PlanSpec = ps
 
 	return p.Program.Start(ctx, alloc)
+}
+
+func buildPlan(spec *flux.Spec, opts *compileOptions) (*plan.Spec, error) {
+	pb := plan.PlannerBuilder{}
+
+	planOptions := opts.planOptions
+
+	lopts := planOptions.logical
+	popts := planOptions.physical
+
+	pb.AddLogicalOptions(lopts...)
+	pb.AddPhysicalOptions(popts...)
+
+	ps, err := pb.Build().Plan(spec)
+	if err != nil {
+		return nil, err
+	}
+	return ps, nil
 }
