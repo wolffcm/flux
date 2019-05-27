@@ -7,7 +7,6 @@ import (
 
 	"github.com/influxdata/flux"
 	"github.com/influxdata/flux/llvm"
-	"github.com/influxdata/flux/semantic"
 	"github.com/spf13/cobra"
 
 	gollvm "github.com/llvm-mirror/llvm/bindings/go/llvm"
@@ -36,18 +35,13 @@ func llvmE(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	semPkg, err := semantic.New(astPkg)
+
+	mod, err := llvm.Build(astPkg)
 	if err != nil {
-		return err
-	}
-
-	mod := llvm.Build(semPkg)
-	mod.Dump()
-
-	if err = gollvm.VerifyModule(mod, gollvm.ReturnStatusAction); err != nil {
-		fmt.Println(err.Error())
+		fmt.Println(err)
 		os.Exit(1)
 	}
+	mod.Dump()
 
 	engine, err := gollvm.NewExecutionEngine(mod)
 	if err != nil {
