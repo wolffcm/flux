@@ -23,7 +23,7 @@ var globalStrings map[string]string
 
 func init() {
 	builtins = map[string]builtinInfo{
-		"println": builtinInfo{
+		"println": {
 			name: "printf",
 			typ: llvm.FunctionType(
 				llvm.Int32Type(),
