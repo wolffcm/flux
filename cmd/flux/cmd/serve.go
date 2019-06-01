@@ -44,19 +44,73 @@ var jsFiles = map[string][]byte{
 
 var body string = `<!DOCTYPE html>
 <html>
+<head>
+<style>
+body {
+  background-color: #000;
+  color: #e0a5f7;
+  font-family: Roboto, Helvetica, sans-serif;
+}
+header {
+  background-color: #111;
+  padding: 30px;
+  text-align: center;
+  font-size: 35px;
+}
+
+h2 {
+  color: #c7f7a5;
+}
+* {
+  box-sizing: border-box;
+}
+
+textarea {
+  white-space: pre;
+  font-family: monospace;
+  background-color: #222;
+  color: #c7f7a5;
+}
+
+/* Create three equal columns that floats next to each other */
+.column {
+  margin: 10px;
+  background-color: #333;
+  float: left;
+  width: 30.0%;
+  padding: 10px;
+}
+
+/* Clear floats after the columns */
+.row:after {
+  content: "";
+  display: table;
+  clear: both;
+}
+</style>
+</head>
 <body>
-
+<header>
 <h2>Compile and Execute Flux</h2>
+</header>
 
-<form action="/" method="post">
-  Enter Flux text:<br>
-  <textarea name="flux" cols="80" rows="8">%s</textarea>
-  <br><br>
-  <input type="submit" value="Submit">
-</form> 
+<div class="row">
+<div class="column">
+<h3>Input Flux</h3>
+{input}
+</div>
 
-%s
+<div class="column">
+<h3>LLVM IR</h3>
+{llvm}
+</div>
 
+<div class="column">
+<h3>Output</h3>
+{output}
+</div>
+
+</div> 
 </body>
 </html>
 `
@@ -68,15 +122,16 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var existingFlux string
-
-	var responseHTML string
-	if flx, ok := r.PostForm["flux"]; ok {
-		existingFlux = flx[0]
-		log.Println("got some flux")
-		responseHTML = processFlux(flx[0])
+	log.Println("Request form:", r.PostForm)
+	var fluxInput string
+	if f, ok := r.PostForm["flux"]; ok {
+		fluxInput = f[0]
 	}
-	_, _ = fmt.Fprintf(w, body, existingFlux, responseHTML)
+
+	inputDiv, llvmDiv, outputDiv := processFlux(fluxInput)
+
+	replacer := strings.NewReplacer("{input}", inputDiv, "{llvm}", llvmDiv, "{output}", outputDiv)
+	_, _ = replacer.WriteString(w, body)
 }
 
 func generatedFilesHandler(w http.ResponseWriter, r *http.Request) {
@@ -102,41 +157,52 @@ func generatedFilesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 var fluxResponse string = `
-<h2>LLVM IR</h2>
-
 <p>%s</p>
 `
 
-func processFlux(flx string) string {
+func processFlux(inputFlux string) (string, string, string) {
+	log.Println("Processing flux: ", inputFlux)
+	inputDiv := getInputDiv(inputFlux)
+
 	tempDir, err := ioutil.TempDir("", "emcc")
 	if err != nil {
-		return fmt.Sprintf(fluxResponse, err)
+		return inputDiv, fmt.Sprintf(fluxResponse, err), ""
 	}
 
-	//defer func() {_ = os.RemoveAll(tempDir)}()
+	defer func() {_ = os.RemoveAll(tempDir)}()
 
-	astPkg, err := flux.Parse(flx)
+	var sb strings.Builder
+	if inputFlux == "" {
+		addTextArea(&sb, "llvm", "", true)
+		llvmDiv := sb.String()
+		sb.Reset()
+		addTextArea(&sb, "output", "", true)
+		outputDiv := sb.String()
+		return inputDiv, llvmDiv, outputDiv
+	}
+
+	astPkg, err := flux.Parse(inputFlux)
 	if err != nil {
-		return fmt.Sprintf(fluxResponse, err.Error())
+		return inputDiv, fmt.Sprintf(fluxResponse, err.Error()), ""
 	}
 
 	mod, err := llvm.Build(astPkg)
 	if err != nil {
-		return fmt.Sprintf(fluxResponse, err.Error())
+		return inputDiv, fmt.Sprintf(fluxResponse, err.Error()), ""
 	}
 
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf(fluxResponse, "<pre>" + mod.String() + "</pre>"))
+	addTextArea(&sb, "llvm", mod.String(), true)
+	llvmDiv := sb.String()
+	sb.Reset()
 
 	filename, err := compileToWASM(tempDir, mod)
 	if err != nil {
-		return fmt.Sprintf(fluxResponse, err.Error())
+		return inputDiv, fmt.Sprintf(fluxResponse, err.Error()), ""
 	}
 
 	log.Println("Now serving ", filename + ".js", " and ", filename + ".wasm")
 
-	sb.WriteString("<h2>Output</h2>")
-	sb.WriteString(`<textarea id="output" rows="8" cols="80"></textarea>`)
+	addTextArea(&sb, "output", "", true)
 	sb.WriteString(`
 <script type="text/javascript">
 var Module = {
@@ -168,6 +234,29 @@ var Module = {
 `)
 
 	sb.WriteString(`<script async type="text/javascript" src="/generated_files/` + filename + `.js"></script>`)
+	outputDiv := sb.String()
+
+	return inputDiv, llvmDiv, outputDiv
+}
+
+func addTextArea(sb *strings.Builder, id, text string, readonly bool) {
+	sb.WriteString(`<textarea name="` + id + `" id = "` + id + `" rows="30" cols="60"`)
+	if readonly {
+		sb.WriteString(` readonly`)
+	}
+	sb.WriteString(`>` + text + `</textarea>
+`)
+}
+
+func getInputDiv(fluxInput string) string {
+	var sb strings.Builder
+	sb.WriteString(`
+<form action="/" method="post">
+`)
+	addTextArea(&sb, "flux", fluxInput, false)
+	sb.WriteString(`<input type="submit" value="Submit">
+</form> 
+`)
 	return sb.String()
 }
 
