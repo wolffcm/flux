@@ -48,13 +48,16 @@ func init() {
 					// If the type if polymorphic, just assume int64 for now
 					typ = semantic.Int
 				}
+				if typ == nil {
+					return fmt.Errorf("could not get type for %v", fluxArg)
+				}
 				switch typ {
 				case semantic.Int:
 					format = b.m.NamedGlobal(printlnI64Fmt)
 				case semantic.String:
 					format = b.m.NamedGlobal(printlnStrFmt)
 				default:
-					return errors.New("unsupported type to println: " + typ.Nature().String())
+					return fmt.Errorf("unsupported type to println: %v", typ)
 				}
 				cast := b.b.CreatePointerCast(format, i8PtrTy, "")
 				b.push(cast)
@@ -367,6 +370,9 @@ func (b *builder) Done(node semantic.Node) {
 		if _, ok := builtins[n.Identifier.Name]; !ok {
 			b.err = errors.New("undefined extern: " + n.Identifier.Name)
 		}
+	case *semantic.ReturnStatement:
+		v := b.pop()
+		b.b.CreateRet(v)
 	case *semantic.ExternBlock:
 	case *semantic.Extern:
 	case *semantic.File:
@@ -394,6 +400,13 @@ func buildFunctionExpression(b *builder, fe *semantic.FunctionExpression) llvm.V
 		panic("default arguments not supported")
 	}
 
+	// Note: sorting the parameter list modifies it, but we can't make a copy
+	// or we'll invalidate the type solution.
+	paramList := fe.Block.Parameters.List
+	sort.Slice(paramList, func(i, j int) bool {
+		return paramList[i].Key.Name < paramList[j].Key.Name
+	})
+
 	fty := buildFunctionType(b, fe)
 	fn := llvm.AddFunction(b.m, "fun", fty)
 	entry := llvm.AddBasicBlock(fn, "entry")
@@ -414,6 +427,8 @@ func buildFunctionExpression(b *builder, fe *semantic.FunctionExpression) llvm.V
 
 	// TODO(cwolff): should sort these to get a deterministic order
 
+	// The code generator expects identifiers to have addresses, so generate
+	// local variables to hold the arguments.
 	for i, param := range fn.Params() {
 		name := fe.Block.Parameters.List[i].Key.Name
 		v := b.b.CreateAlloca(llvm.Int64Type(), name)
@@ -422,10 +437,16 @@ func buildFunctionExpression(b *builder, fe *semantic.FunctionExpression) llvm.V
 	}
 
 	// For now assume that body is just a simple expression
-	e := fe.Block.Body.(semantic.Expression)
-	semantic.Walk(b, e)
-	v := b.pop()
-	b.b.CreateRet(v)
+	if e, ok := fe.Block.Body.(semantic.Expression); ok {
+		semantic.Walk(b, e)
+		v := b.pop()
+		b.b.CreateRet(v)
+	} else {
+		block := fe.Block.Body.(*semantic.Block)
+		for _, stmt := range block.Body {
+			semantic.Walk(b, stmt)
+		}
+	}
 
 	return fn
 }

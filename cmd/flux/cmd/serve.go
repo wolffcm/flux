@@ -248,7 +248,7 @@ func addTextArea(sb *strings.Builder, id, text string, readonly bool) {
 	if readonly {
 		sb.WriteString(` readonly`)
 	}
-	sb.WriteString(`>` + text + `</textarea>
+	sb.WriteString(` spellcheck="false">` + text + `</textarea>
 `)
 }
 
