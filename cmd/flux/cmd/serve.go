@@ -19,7 +19,7 @@ import (
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "start a web server that accepts flux and produces wasm",
-	Long: "start a web server that accepts flux and produces wasm",
+	Long:  "start a web server that accepts flux and produces wasm",
 	Args:  cobra.ExactArgs(0),
 	RunE:  serveE,
 }
@@ -36,11 +36,9 @@ func serveE(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-var wasmFiles = map[string][]byte{
-}
+var wasmFiles = map[string][]byte{}
 
-var jsFiles = map[string][]byte{
-}
+var jsFiles = map[string][]byte{}
 
 var body string = `<!DOCTYPE html>
 <html>
@@ -52,30 +50,35 @@ body {
   font-family: Roboto, Helvetica, sans-serif;
 }
 header {
-  background-color: #111;
+  background-color: #595800;
+  color: #F0EC0A;
   padding: 30px;
   text-align: center;
   font-size: 35px;
 }
 
-h2 {
-  color: #c7f7a5;
-}
+
 * {
   box-sizing: border-box;
 }
 
 textarea {
+  width: 100%;
+  height: 100%;
+  border: solid;
+  border-color: #7F4DD6;
   white-space: pre;
   font-family: monospace;
-  background-color: #222;
-  color: #c7f7a5;
+  background-color: #261347;
+  font-size: 14px;
+  color: #CAABFF;
 }
 
 /* Create three equal columns that floats next to each other */
 .column {
   margin: 10px;
-  background-color: #333;
+  background-color: #4B248C;
+  color: #DBDBDB;
   float: left;
   width: 30.0%;
   padding: 10px;
@@ -116,13 +119,12 @@ textarea {
 `
 
 func handler(w http.ResponseWriter, r *http.Request) {
-	log.Println("handling request...")
+	log.Println("handling request")
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	log.Println("Request form:", r.PostForm)
 	var fluxInput string
 	if f, ok := r.PostForm["flux"]; ok {
 		fluxInput = f[0]
@@ -135,60 +137,48 @@ func handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func generatedFilesHandler(w http.ResponseWriter, r *http.Request) {
-	log.Println("Files handler invoked")
+	log.Println("handling file request")
 	_, file := path.Split(r.URL.String())
 	if strings.Contains(file, ".wasm") {
 		bytes, ok := wasmFiles[file]
-		if ! ok {
+		if !ok {
 			http.Error(w, "WASM file not found", http.StatusNotFound)
 		}
 		_, _ = w.Write(bytes)
 		return
 	} else if strings.Contains(file, ".js") {
 		bytes, ok := jsFiles[file]
-		if ! ok {
+		if !ok {
 			http.Error(w, "JS file not found", http.StatusNotFound)
 		}
 		_, _ = w.Write(bytes)
 		return
 	}
 
-	http.Error(w, "unknown file " + file, http.StatusNotFound)
+	http.Error(w, "unknown file "+file, http.StatusBadRequest)
 }
 
-var fluxResponse string = `
-<p>%s</p>
-`
-
 func processFlux(inputFlux string) (string, string, string) {
-	log.Println("Processing flux: ", inputFlux)
-	inputDiv := getInputDiv(inputFlux)
-
 	tempDir, err := ioutil.TempDir("", "emcc")
 	if err != nil {
-		return inputDiv, fmt.Sprintf(fluxResponse, err), ""
+		return makeDivs(inputFlux, err.Error(), "")
 	}
 
-	defer func() {_ = os.RemoveAll(tempDir)}()
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	var sb strings.Builder
 	if inputFlux == "" {
-		addTextArea(&sb, "llvm", "", true)
-		llvmDiv := sb.String()
-		sb.Reset()
-		addTextArea(&sb, "output", "", true)
-		outputDiv := sb.String()
-		return inputDiv, llvmDiv, outputDiv
+		return makeDivs(inputFlux, "", "")
 	}
 
 	astPkg, err := flux.Parse(inputFlux)
 	if err != nil {
-		return inputDiv, fmt.Sprintf(fluxResponse, err.Error()), ""
+		return makeDivs(inputFlux, err.Error(), "")
 	}
 
 	mod, err := llvm.Build(astPkg)
 	if err != nil {
-		return inputDiv, fmt.Sprintf(fluxResponse, err.Error()), ""
+		return makeDivs(inputFlux, err.Error(), "")
 	}
 
 	addTextArea(&sb, "llvm", mod.String(), true)
@@ -197,10 +187,10 @@ func processFlux(inputFlux string) (string, string, string) {
 
 	filename, err := compileToWASM(tempDir, mod)
 	if err != nil {
-		return inputDiv, fmt.Sprintf(fluxResponse, err.Error()), ""
+		return makeDivs(inputFlux, err.Error(), "")
 	}
 
-	log.Println("Now serving ", filename + ".js", " and ", filename + ".wasm")
+	log.Println("Now serving ", filename+".js", " and ", filename+".wasm")
 
 	addTextArea(&sb, "output", "", true)
 	sb.WriteString(`
@@ -234,6 +224,20 @@ var Module = {
 `)
 
 	sb.WriteString(`<script async type="text/javascript" src="/generated_files/` + filename + `.js"></script>`)
+	outputDiv := sb.String()
+	return getInputDiv(inputFlux), llvmDiv, outputDiv
+}
+
+func makeDivs(inputFlux, llvm, output string) (string, string, string) {
+	inputDiv := getInputDiv(inputFlux)
+
+	var sb strings.Builder
+
+	addTextArea(&sb, "llvm", llvm, true)
+	llvmDiv := sb.String()
+	sb.Reset()
+
+	addTextArea(&sb, "output", "", true)
 	outputDiv := sb.String()
 
 	return inputDiv, llvmDiv, outputDiv

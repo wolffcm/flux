@@ -1,44 +1,31 @@
 package llvm_test
 
 import (
-	"os"
-	"path"
 	"strings"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/influxdata/flux"
 	_ "github.com/influxdata/flux/builtin"
 	"github.com/influxdata/flux/llvm"
-	gollvm "github.com/llvm-mirror/llvm/bindings/go/llvm"
 )
 
 func TestBuilder(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		flux string
-		want string
+		want []string
 	}{
 		{
 			name: "simple",
 			flux: `x = 0
 x`,
-			want: `; ModuleID = 'flux_module'
-source_filename = "flux_module"
-target triple = "asmjs-unknown-emscripten"
-
-@println_i64_fmt = private unnamed_addr constant [6 x i8] c"%lld\0A\00", align 1
-
-declare i32 @printf(i8*, ...)
-
-define void @flux_main() {
+			want: []string{`
 entry:
   %x = alloca i64
   store i64 0, i64* %x
   %0 = load i64, i64* %x
   ret void
-}
-`,
+`},
 		},
 		{
 			name: "add",
@@ -46,16 +33,7 @@ entry:
 y = x + 1
 y
 `,
-			want: `; ModuleID = 'flux_module'
-source_filename = "flux_module"
-target triple = "asmjs-unknown-emscripten"
-
-@println_i64_fmt = private unnamed_addr constant [6 x i8] c"%lld\0A\00", align 1
-
-declare i32 @printf(i8*, ...)
-
-define void @flux_main() {
-entry:
+			want: []string{`
   %x = alloca i64
   store i64 10, i64* %x
   %0 = load i64, i64* %x
@@ -64,23 +42,14 @@ entry:
   store i64 %1, i64* %y
   %2 = load i64, i64* %y
   ret void
-}
-`,
+`},
 		},
 		{
 			name: "conditional",
 			flux: `x = 10
 y = if x > 9 then x * 10 else x * 100
 y`,
-			want: `; ModuleID = 'flux_module'
-source_filename = "flux_module"
-target triple = "asmjs-unknown-emscripten"
-
-@println_i64_fmt = private unnamed_addr constant [6 x i8] c"%lld\0A\00", align 1
-
-declare i32 @printf(i8*, ...)
-
-define void @flux_main() {
+			want: []string{`
 entry:
   %x = alloca i64
   store i64 10, i64* %x
@@ -104,8 +73,7 @@ merge0:                                           ; preds = %false2, %true1
   store i64 %6, i64* %y
   %7 = load i64, i64* %y
   ret void
-}
-`,
+`},
 		},
 		{
 			name: "nested conditional",
@@ -119,15 +87,7 @@ y = if x < 1024 then
           then x * 100
           else x * 1000
 y`,
-			want: `; ModuleID = 'flux_module'
-source_filename = "flux_module"
-target triple = "asmjs-unknown-emscripten"
-
-@println_i64_fmt = private unnamed_addr constant [6 x i8] c"%lld\0A\00", align 1
-
-declare i32 @printf(i8*, ...)
-
-define void @flux_main() {
+			want: []string{`
 entry:
   %x = alloca i64
   store i64 10, i64* %x
@@ -178,8 +138,7 @@ merge0:                                           ; preds = %merge6, %merge2
   store i64 %15, i64* %y
   %16 = load i64, i64* %y
   ret void
-}
-`,
+`},
 		},
 		{
 			name: "println",
@@ -187,15 +146,7 @@ merge0:                                           ; preds = %merge6, %merge2
 println(v: x)
 x + 1
 `,
-			want: `; ModuleID = 'flux_module'
-source_filename = "flux_module"
-target triple = "asmjs-unknown-emscripten"
-
-@println_i64_fmt = private unnamed_addr constant [6 x i8] c"%lld\0A\00", align 1
-
-declare i32 @printf(i8*, ...)
-
-define void @flux_main() {
+			want: []string{`
 entry:
   %x = alloca i64
   store i64 17, i64* %x
@@ -204,13 +155,58 @@ entry:
   %2 = load i64, i64* %x
   %3 = add i64 %2, 1
   ret void
-}
-`,
+`},
 		},
 		{
 			name: "hello_world",
 			flux: `println(v: "hello world")`,
-			want: ``,
+			want: []string{`
+entry:
+  %0 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @println_str_fmt, i32 0, i32 0), i8* getelementptr inbounds ([12 x i8], [12 x i8]* @str, i32 0, i32 0))
+  ret void
+`},
+		},
+		{
+			name: "string assign",
+			flux: `foo = "hello world"
+println(v: foo)`,
+			want: []string{`
+entry:
+  %foo = alloca i8*
+  store i8* getelementptr inbounds ([12 x i8], [12 x i8]* @str, i32 0, i32 0), i8** %foo
+  %0 = load i8*, i8** %foo
+  %1 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @println_str_fmt, i32 0, i32 0), i8* %0)
+  ret void
+`},
+		},
+		{
+			name: "define function",
+			flux: `f = (n) => n * n
+x = f(n: 3)
+println(v: x)
+`,
+			want: []string{`
+entry:
+  %f = alloca i64 (i64)*
+  store i64 (i64)* @fun, i64 (i64)** %f
+  %0 = load i64 (i64)*, i64 (i64)** %f
+  %1 = call i64 %0(i64 3)
+  %x = alloca i64
+  store i64 %1, i64* %x
+  %2 = load i64, i64* %x
+  %3 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([6 x i8], [6 x i8]* @println_i64_fmt, i32 0, i32 0), i64 %2)
+  ret void
+`, `
+define i64 @fun(i64) {
+entry:
+  %n = alloca i64
+  store i64 %0, i64* %n
+  %1 = load i64, i64* %n
+  %2 = load i64, i64* %n
+  %3 = mul i64 %1, %2
+  ret i64 %3
+}
+`},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -224,17 +220,12 @@ entry:
 				t.Fatal(err)
 			}
 
-			const myPath = "/Users/cwolff/workspace/wasm/flux_bc"
-			f, err := os.Create(path.Join(myPath, strings.Replace(tc.name, " ", "_", -1)+".bc"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := gollvm.WriteBitcodeToFile(llvmMod, f); err != nil {
-				t.Fatal(err)
-			}
+			llvmText := llvmMod.String()
 
-			if diff := cmp.Diff(tc.want, llvmMod.String()); diff != "" {
-				t.Fatalf("did not get expected llvm IR; -want/+got:\n%s\n", diff)
+			for _, want := range tc.want {
+				if !strings.Contains(llvmText, want) {
+					t.Fatalf("did not get expected llvm IR; want:\n%s\ngot:\n%s", tc.want, llvmText)
+				}
 			}
 		})
 	}

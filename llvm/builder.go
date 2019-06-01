@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/influxdata/flux"
+	"runtime/debug"
+	"sort"
 
 	"github.com/influxdata/flux/ast"
 	"github.com/influxdata/flux/semantic"
@@ -18,10 +20,15 @@ const (
 	printlnStrFmt = "println_str_fmt"
 )
 
+var i8PtrTy llvm.Type
+
+// TODO(cwolff): move these to their own file
 var builtins map[string]builtinInfo
 var globalStrings map[string]string
 
 func init() {
+	i8PtrTy = llvm.PointerType(llvm.Int8Type(), 0)
+
 	builtins = map[string]builtinInfo{
 		"println": {
 			name: "printf",
@@ -38,7 +45,8 @@ func init() {
 				var format llvm.Value
 				typ, err := b.ts.TypeOf(fluxArg)
 				if err != nil {
-					return err
+					// If the type if polymorphic, just assume int64 for now
+					typ = semantic.Int
 				}
 				switch typ {
 				case semantic.Int:
@@ -48,7 +56,6 @@ func init() {
 				default:
 					return errors.New("unsupported type to println: " + typ.Nature().String())
 				}
-				i8PtrTy := llvm.PointerType(llvm.Int8Type(), 0)
 				cast := b.b.CreatePointerCast(format, i8PtrTy, "")
 				b.push(cast)
 
@@ -62,6 +69,7 @@ func init() {
 		printlnI64Fmt: "%lld\n",
 		printlnStrFmt: "%s\n",
 	}
+
 }
 
 type builtinInfo struct {
@@ -71,7 +79,14 @@ type builtinInfo struct {
 	pushArgs func(b *builder, ce *semantic.CallExpression) error
 }
 
-func Build(astPkg *ast.Package) (llvm.Module, error) {
+func Build(astPkg *ast.Package) (mod llvm.Module, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			mod = llvm.Module{}
+			err = fmt.Errorf("panic: %v\nstack:\n%v", e, string(debug.Stack()))
+		}
+	}()
+
 	pkg, ts, err := toSemantic(astPkg)
 	if err != nil {
 		return llvm.Module{}, err
@@ -84,7 +99,7 @@ func Build(astPkg *ast.Package) (llvm.Module, error) {
 		callStates:           make(map[*semantic.CallExpression]builtinInfo),
 		builtinReverseLookup: make(map[llvm.Value]builtinInfo),
 	}
-	mod := llvm.NewModule("flux_module")
+	mod = llvm.NewModule("flux_module")
 
 	// Declare builtins
 	for _, bi := range builtins {
@@ -109,10 +124,13 @@ func Build(astPkg *ast.Package) (llvm.Module, error) {
 	}
 
 	semantic.Walk(v, pkg)
+	if v.err != nil {
+		return llvm.Module{}, fmt.Errorf("coult not generate IR: %v", v.err)
+	}
 	v.b.CreateRetVoid()
 
 	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
-		return llvm.Module{}, err
+		return llvm.Module{}, fmt.Errorf("error verifying module: %v", err.Error())
 	}
 
 	mod.SetTarget(target)
@@ -180,6 +198,20 @@ func (b *builder) newID() int64 {
 	return v
 }
 
+func (b *builder) push(v llvm.Value) {
+	b.values = append(b.values, v)
+}
+
+func (b *builder) pop() llvm.Value {
+	v := b.values[len(b.values)-1]
+	b.values = b.values[:len(b.values)-1]
+	return v
+}
+
+func (b *builder) peek() llvm.Value {
+	return b.values[len(b.values)-1]
+}
+
 func (b *builder) Visit(node semantic.Node) semantic.Visitor {
 	if b.err != nil {
 		return nil
@@ -224,17 +256,17 @@ func (b *builder) Visit(node semantic.Node) semantic.Visitor {
 				return nil
 			}
 		} else {
-			// Explicitly recurse into arguments to avoid
-			// literally processing the object expression.
-			for _, arg := range n.Arguments.Properties {
-				semantic.Walk(b, arg)
-			}
+			pushArgs(b, n)
 		}
 
 		if n.Pipe != nil {
 			panic("pipe expression unsupported")
 		}
 
+		return nil
+	case *semantic.FunctionExpression:
+		v := buildFunctionExpression(b, n)
+		b.push(v)
 		return nil
 	}
 	return b
@@ -246,8 +278,9 @@ func (b *builder) Done(node semantic.Node) {
 	}
 	switch n := node.(type) {
 	case *semantic.NativeVariableAssignment:
-		b.names[n.Identifier.Name] = b.b.CreateAlloca(llvm.Int64Type(), n.Identifier.Name)
-		b.b.CreateStore(b.pop(), b.names[n.Identifier.Name])
+		v := b.pop()
+		b.names[n.Identifier.Name] = b.b.CreateAlloca(v.Type(), n.Identifier.Name)
+		b.b.CreateStore(v, b.names[n.Identifier.Name])
 	case *semantic.ExpressionStatement:
 		b.pop()
 	case *semantic.IdentifierExpression:
@@ -309,7 +342,8 @@ func (b *builder) Done(node semantic.Node) {
 		v := llvm.ConstInt(llvm.Int64Type(), uint64(n.Value), false)
 		b.push(v)
 	case *semantic.StringLiteral:
-		v := b.b.CreateGlobalStringPtr(n.Value, "str")
+		lit := b.b.CreateGlobalStringPtr(n.Value, "str")
+		v := b.b.CreatePointerCast(lit, i8PtrTy, "")
 		b.push(v)
 	case *semantic.CallExpression:
 		var nargs int
@@ -327,10 +361,8 @@ func (b *builder) Done(node semantic.Node) {
 		v := b.b.CreateCall(callee, args, "")
 		b.push(v)
 		delete(b.callStates, n)
-	//case *semantic.ObjectExpression:
-	//	// Do nothing for now
-	//case *semantic.Property:
-	//	// Do nothing for now
+	case *semantic.FunctionExpression:
+		// Do nothing; function expression is on top of stack
 	case *semantic.ExternalVariableAssignment:
 		if _, ok := builtins[n.Identifier.Name]; !ok {
 			b.err = errors.New("undefined extern: " + n.Identifier.Name)
@@ -344,16 +376,67 @@ func (b *builder) Done(node semantic.Node) {
 	}
 }
 
-func (b *builder) push(v llvm.Value) {
-	b.values = append(b.values, v)
+func pushArgs(b *builder, ce *semantic.CallExpression) {
+	args := ce.Arguments.Properties
+	sortedArgs := make([]*semantic.Property, len(args))
+	copy(sortedArgs, args)
+	sort.Slice(sortedArgs, func(i, j int) bool {
+		return sortedArgs[i].Key.Key() < sortedArgs[j].Key.Key()
+	})
+
+	for _, a := range sortedArgs {
+		semantic.Walk(b, a.Value)
+	}
 }
 
-func (b *builder) pop() llvm.Value {
-	v := b.values[len(b.values)-1]
-	b.values = b.values[:len(b.values)-1]
-	return v
+func buildFunctionExpression(b *builder, fe *semantic.FunctionExpression) llvm.Value {
+	if fe.Defaults != nil && len(fe.Defaults.Properties) > 0 {
+		panic("default arguments not supported")
+	}
+
+	fty := buildFunctionType(b, fe)
+	fn := llvm.AddFunction(b.m, "fun", fty)
+	entry := llvm.AddBasicBlock(fn, "entry")
+
+	caller := b.f
+	callerNames := b.names
+	callerBlock := b.b.GetInsertBlock()
+
+	defer func() {
+		b.f = caller
+		b.names = callerNames
+		b.b.SetInsertPointAtEnd(callerBlock)
+	}()
+
+	b.f = fn
+	b.names = make(map[string]llvm.Value)
+	b.b.SetInsertPointAtEnd(entry)
+
+	// TODO(cwolff): should sort these to get a deterministic order
+
+	for i, param := range fn.Params() {
+		name := fe.Block.Parameters.List[i].Key.Name
+		v := b.b.CreateAlloca(llvm.Int64Type(), name)
+		b.b.CreateStore(param, v)
+		b.names[name] = v
+	}
+
+	// For now assume that body is just a simple expression
+	e := fe.Block.Body.(semantic.Expression)
+	semantic.Walk(b, e)
+	v := b.pop()
+	b.b.CreateRet(v)
+
+	return fn
 }
 
-func (b *builder) peek() llvm.Value {
-	return b.values[len(b.values)-1]
+func buildFunctionType(b *builder, fe *semantic.FunctionExpression) llvm.Type {
+	// For now, assume all inputs are int64 and output is int64
+	rty := llvm.Int64Type()
+
+	ptys := make([]llvm.Type, len(fe.Block.Parameters.List))
+	for i := range ptys {
+		ptys[i] = llvm.Int64Type()
+	}
+	return llvm.FunctionType(rty, ptys, false)
 }
