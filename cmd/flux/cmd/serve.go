@@ -43,77 +43,160 @@ var jsFiles = map[string][]byte{}
 var body string = `<!DOCTYPE html>
 <html>
 <head>
+<link href="https://fonts.googleapis.com/css?family=Roboto|Roboto+Mono&display=swap" rel="stylesheet">
 <style>
-body {
-  background-color: #000;
-  color: #e0a5f7;
-  font-family: Roboto, Helvetica, sans-serif;
-}
-header {
-  background-color: #595800;
-  color: #F0EC0A;
-  padding: 30px;
-  text-align: center;
-  font-size: 35px;
-}
-
 
 * {
   box-sizing: border-box;
 }
 
+html, body {
+  background: linear-gradient(180deg,#202028 0,#0f0e15);
+  color: #DBDBDB;
+  font-family: Roboto,Helvetica,Arial,Tahoma,Verdana,sans-serif;
+  height: 100%;
+  margin: 0;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.row {
+  display: flex;
+  flex-direction: row;
+  margin-left: 142px;
+  margin-right: 142px;
+}
+
+.spacer {
+  height: 15px;
+}
+
+.panelspacer {
+  width: 15px;
+}
+
+.page-header {
+  display: flex;
+  height: 120px;
+  align-items: center;
+}
+
+.panel {
+  flex: 1 1 auto;
+  background-color: #292933;
+  border-radius: 15px;
+}
+
+.panel-header {
+  display: flex;
+  flex-direction: row;
+  height: 50px;
+  align-items: center;
+  justify-content: space-between;
+  height: 30px;
+  align-items: center;
+  padding: 10px;
+  justify-content: space-between;
+}
+
+.panel-header-left {
+  align-content: flex-start;
+}
+
+.panel-header-right {
+  align-content: flex-end;
+}
+
+.panel-body {
+  padding-left: 5px;
+  padding-right: 7px;
+  padding-bottom: 5px;
+}
+
+::selection {
+    background-color: #22adf6;
+    color: #fff;
+}
+
+
+input {
+  border-radius: 10px;
+  background-color: #22adf6;
+  border-color: #22adf6;
+  color: #f0fcff;
+}
+
 textarea {
   width: 100%;
-  height: 100%;
   border: solid;
-  border-color: #7F4DD6;
+  border-color: #383846;
   white-space: pre;
-  font-family: monospace;
-  background-color: #261347;
+  font-family: RobotoMono,monospace;
+  background-color: #000;
   font-size: 14px;
   color: #CAABFF;
+  border-radius: 10px;
+  padding: 5px;
 }
 
-/* Create three equal columns that floats next to each other */
-.column {
-  margin: 10px;
-  background-color: #4B248C;
-  color: #DBDBDB;
-  float: left;
-  width: 30.0%;
-  padding: 10px;
-}
-
-/* Clear floats after the columns */
-.row:after {
-  content: "";
-  display: table;
-  clear: both;
-}
 </style>
 </head>
 <body>
-<header>
-<h2>Compile and Execute Flux</h2>
-</header>
+
+<div class="page">
 
 <div class="row">
-<div class="column">
-<h3>Input Flux</h3>
-{input}
+  <div class="page-header">
+    <h3>Compile and Execute Flux</h3>
+  </div>
 </div>
 
-<div class="column">
-<h3>LLVM IR</h3>
-{llvm}
-</div>
+<div class="row">
 
-<div class="column">
-<h3>Output</h3>
-{output}
-</div>
+  <div class="panel"><form action="/" method="post">
+    <div class="panel-header">
+      <div class="panel-header-left">
+        <b>FLUX SOURCE</b>
+      </div>
+      <div class="panel-header-right">
+        <input type="submit" value="Submit">
+      </div>
+    </div>
+    <div class="panel-body">
+      {input}
+    </div>
+  </form></div>
 
-</div> 
+  <div class="panelspacer"></div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <b>OUTPUT</b>
+    </div>
+    <div class="panel-body">
+      {output}
+    </div>
+  </div> 
+
+</div><!-- end row -->
+
+<div class="row spacer"></div>
+
+<div class="row">
+  <div class="panel">
+    <div class="panel-header">
+      <b>LLVM IR</b>
+    </div>
+  <div class="panel-body">
+    {llvm}
+  </div>
+</div><!-- end row -->
+
+</div><!-- end page -->
 </body>
 </html>
 `
@@ -244,7 +327,7 @@ func makeDivs(inputFlux, llvm, output string) (string, string, string) {
 }
 
 func addTextArea(sb *strings.Builder, id, text string, readonly bool) {
-	sb.WriteString(`<textarea name="` + id + `" id = "` + id + `" rows="30" cols="60"`)
+	sb.WriteString(`<textarea name="` + id + `" id = "` + id + `" rows="20" cols="60"`)
 	if readonly {
 		sb.WriteString(` readonly`)
 	}
@@ -254,13 +337,7 @@ func addTextArea(sb *strings.Builder, id, text string, readonly bool) {
 
 func getInputDiv(fluxInput string) string {
 	var sb strings.Builder
-	sb.WriteString(`
-<form action="/" method="post">
-`)
 	addTextArea(&sb, "flux", fluxInput, false)
-	sb.WriteString(`<input type="submit" value="Submit">
-</form> 
-`)
 	return sb.String()
 }
 
