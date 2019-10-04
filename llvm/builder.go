@@ -8,6 +8,7 @@ import (
 	"github.com/influxdata/flux/semantic"
 	"github.com/llvm-mirror/llvm/bindings/go/llvm"
 	"runtime/debug"
+	"sort"
 )
 
 const (
@@ -33,7 +34,7 @@ func Build(astPkg *ast.Package) (mod llvm.Module, err error) {
 		names:                make(map[string]llvm.Value),
 		condStates:           make(map[*semantic.ConditionalExpression]condState),
 		builtinReverseLookup: make(map[llvm.Value]builtinInfo),
-		env: make(map[string]semantic.Expression),
+		env:                  make(map[string]semantic.Expression),
 	}
 	mod = llvm.NewModule("flux_module")
 
@@ -79,6 +80,11 @@ func toSemantic(astPkg *ast.Package) (semantic.Node, semantic.TypeSolution, erro
 	if err != nil {
 		return nil, nil, err
 	}
+
+	// Sort arguments in each call expression, to avoid having to do it
+	// later every time we visit a call.
+	sortCallParams(semPkg)
+
 	extern := &semantic.Extern{
 		Block: &semantic.ExternBlock{
 			Node: semPkg,
@@ -104,10 +110,28 @@ func toSemantic(astPkg *ast.Package) (semantic.Node, semantic.TypeSolution, erro
 	return extern, ts, nil
 }
 
-var i8PtrTy llvm.Type
+func sortCallParams(semPkg semantic.Node) {
+	semantic.Walk(paramSortingVisitor{}, semPkg)
+}
 
-func init() {
-	i8PtrTy = llvm.PointerType(llvm.Int8Type(), 0)
+type paramSortingVisitor struct{}
+
+func (v paramSortingVisitor) Visit(node semantic.Node) semantic.Visitor {
+	return v
+}
+
+func (paramSortingVisitor) Done(node semantic.Node) {
+	if ce, ok := node.(*semantic.CallExpression); ok {
+		args := ce.Arguments.Properties
+		sort.Slice(args, func(i, j int) bool {
+			return args[i].Key.Key() < args[j].Key.Key()
+		})
+	} else if fe, ok := node.(*semantic.FunctionExpression); ok {
+		params := fe.Block.Parameters.List
+		sort.Slice(params, func(i, j int) bool {
+			return params[i].Key.Name < params[j].Key.Name
+		})
+	}
 }
 
 type builder struct {
@@ -124,7 +148,7 @@ type builder struct {
 	err error
 
 	condStates map[*semantic.ConditionalExpression]condState
-	env map[string]semantic.Expression
+	env        map[string]semantic.Expression
 }
 
 type condState struct {
@@ -227,35 +251,15 @@ func (b *builder) Done(node semantic.Node) {
 		op2 := b.pop()
 		op1 := b.pop()
 
-		var nat semantic.Nature
-		if ty, err := b.ts.TypeOf(n.Left); err != nil || ty == nil {
-			// probably we have unbound type variables.
-			// choose a concrete llvm type based on the polytype.
-			ty, err := b.ts.PolyTypeOf(n)
-			if err != nil {
-				b.err = err
-				return
-			} else if ty == nil {
-				b.err = errors.New("type of " + n.NodeType() + " node is nil")
-			}
-			nat, err = b.natureFromPolyType(ty)
-			if err != nil {
-				b.err = err
-				return
-			}
-		} else {
-			nat = ty.Nature()
-		}
-
 		var v llvm.Value
 		var err error
-		switch nat {
-		case semantic.Int:
+		switch t := op1.Type(); t {
+		case llvmIntType:
 			v, err = b.genBinaryIntInsn(n, op1, op2)
-		case semantic.Float:
+		case llvmFloatType:
 			v, err = b.genBinaryFloatInsn(n, op1, op2)
 		default:
-			err = errors.New("unable to get type of " + nat.String())
+			err = errors.New("unable to gen binary insn for type of " + t.String())
 		}
 		if err != nil {
 			b.err = err
@@ -279,14 +283,14 @@ func (b *builder) Done(node semantic.Node) {
 	case *semantic.Identifier:
 		// Do nothing, parent will generate appropriate code for context.
 	case *semantic.IntegerLiteral:
-		v := llvm.ConstInt(llvm.Int64Type(), uint64(n.Value), false)
+		v := llvm.ConstInt(llvmIntType, uint64(n.Value), false)
 		b.push(v)
 	case *semantic.FloatLiteral:
-		v := llvm.ConstFloat(llvm.DoubleType(), n.Value)
+		v := llvm.ConstFloat(llvmFloatType, n.Value)
 		b.push(v)
 	case *semantic.StringLiteral:
 		lit := b.b.CreateGlobalStringPtr(n.Value, "str")
-		v := b.b.CreatePointerCast(lit, i8PtrTy, "")
+		v := b.b.CreatePointerCast(lit, llvmStringType, "")
 		b.push(v)
 	case *semantic.CallExpression:
 		// Do nothing; call expression is on top of stack
@@ -307,11 +311,6 @@ func (b *builder) Done(node semantic.Node) {
 		b.err = errors.New("unsupported node: " + node.NodeType())
 		return
 	}
-}
-
-
-func (b *builder) natureFromPolyType(ty semantic.PolyType) (semantic.Nature, error) {
-	return semantic.Int, nil
 }
 
 func (b *builder) genBinaryFloatInsn(node *semantic.BinaryExpression, op1, op2 llvm.Value) (llvm.Value, error) {
@@ -344,7 +343,7 @@ func (b *builder) genBinaryFloatInsn(node *semantic.BinaryExpression, op1, op2 l
 
 func (b *builder) genBinaryIntInsn(node *semantic.BinaryExpression, op1, op2 llvm.Value) (llvm.Value, error) {
 	var v llvm.Value
-	switch node.Operator {
+	switch o := node.Operator; o {
 	case ast.AdditionOperator:
 		v = b.b.CreateAdd(op1, op2, "")
 	case ast.SubtractionOperator:
@@ -364,7 +363,7 @@ func (b *builder) genBinaryIntInsn(node *semantic.BinaryExpression, op1, op2 llv
 	case ast.LessThanEqualOperator:
 		v = b.b.CreateICmp(llvm.IntSLE, op1, op2, "")
 	default:
-		return llvm.Value{}, errors.New("unsupported binary operand")
+		return llvm.Value{}, errors.New("unsupported binary operand " + o.String())
 	}
 
 	return v, nil

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/influxdata/flux/semantic"
 	"github.com/llvm-mirror/llvm/bindings/go/llvm"
-	"sort"
 )
 
 func (b *builder) buildCallExpression(callExpr *semantic.CallExpression) semantic.Visitor {
@@ -38,53 +37,29 @@ func (b *builder) buildBuiltinCallExpression(bi builtinInfo, callExpr *semantic.
 	return nil
 }
 
+// Function expressions in Flux will be assigned general types with
+// type variables.  At the callsite we will know the actual types
+// required and can generate the corresponding code.
+
 func (b *builder) buildFluxCallExpression(callExpr *semantic.CallExpression, callee llvm.Value) semantic.Visitor {
-	// Check to see if we need to generate a specialization here.
-	calleeType, err := b.ts.PolyTypeOf(callExpr.Callee)
+	fluxCalleeType, err := b.ts.PolyTypeOf(callExpr.Callee)
 	if err != nil {
 		b.err = err
 		return nil
 	}
+	llvmCalleeType, _ := polyTypeToLLVMType(fluxCalleeType, true)
+	fmt.Println("llvm call expr callee type: ", llvmCalleeType.String())
 
-	var origType semantic.PolyType
-	if ie, ok := callExpr.Callee.(*semantic.IdentifierExpression); ok {
-		rhs, ok := b.env[ie.Name]
-		if !ok {
-			b.err = errors.New("use of undefined var")
-			return nil
-		}
-		origType, err = b.ts.PolyTypeOf(rhs)
-		if err != nil {
-			b.err = err
-			return nil
-		}
-	} else {
-		origType = calleeType
-	}
+	llvmDefType := callee.Type().ElementType()
 
-	if str, ok := calleeType.(fmt.Stringer); ok {
-		fmt.Println("Entering call, type of callee: ", str)
-	}
-
-	if str, ok := origType.(fmt.Stringer); ok {
-		fmt.Println("Entering call, type of orig fn expr: ", str)
-	}
-
-	if calleeType.Equal(origType) {
-		fmt.Println("types are equal")
-	} else {
-		fmt.Println("types are not equal")
+	if llvmDefType != llvmCalleeType {
+		b.err = fmt.Errorf("call needs specialization; definition type is %v, callsite type is %v", llvmDefType, llvmCalleeType)
+		return nil
 	}
 
 	args := callExpr.Arguments.Properties
-	sortedArgs := make([]*semantic.Property, len(args))
-	copy(sortedArgs, args)
-	sort.Slice(sortedArgs, func(i, j int) bool {
-		return sortedArgs[i].Key.Key() < sortedArgs[j].Key.Key()
-	})
-
 	llvmArgs := make([]llvm.Value, len(args))
-	for i, a := range sortedArgs {
+	for i, a := range args {
 		semantic.Walk(b, a.Value)
 		llvmArgs[i] = b.pop()
 	}
@@ -100,14 +75,12 @@ func (b *builder) buildFunctionExpression(fe *semantic.FunctionExpression) seman
 		return nil
 	}
 
-	// Note: sorting the parameter list modifies it, but we can't make a copy
-	// or we'll invalidate the type solution.
-	paramList := fe.Block.Parameters.List
-	sort.Slice(paramList, func(i, j int) bool {
-		return paramList[i].Key.Name < paramList[j].Key.Name
-	})
+	fty, err := b.getLLVMType(fe, true)
+	if err != nil {
+		b.err = err
+		return nil
+	}
 
-	fty := buildFunctionType(b, fe)
 	fn := llvm.AddFunction(b.m, "fun", fty)
 	entry := llvm.AddBasicBlock(fn, "entry")
 
@@ -125,18 +98,16 @@ func (b *builder) buildFunctionExpression(fe *semantic.FunctionExpression) seman
 	b.names = make(map[string]llvm.Value)
 	b.b.SetInsertPointAtEnd(entry)
 
-	// TODO(cwolff): should sort these to get a deterministic order
-
 	// The code generator expects identifiers to have addresses, so generate
 	// local variables to hold the arguments.
+	llvmParamTypes := fty.ParamTypes()
 	for i, param := range fn.Params() {
 		name := fe.Block.Parameters.List[i].Key.Name
-		v := b.b.CreateAlloca(llvm.Int64Type(), name)
+		v := b.b.CreateAlloca(llvmParamTypes[i], name)
 		b.b.CreateStore(param, v)
 		b.names[name] = v
 	}
 
-	// For now assume that body is just a simple expression
 	if e, ok := fe.Block.Body.(semantic.Expression); ok {
 		semantic.Walk(b, e)
 		v := b.pop()
@@ -151,15 +122,4 @@ func (b *builder) buildFunctionExpression(fe *semantic.FunctionExpression) seman
 	b.push(fn)
 
 	return nil
-}
-
-func buildFunctionType(b *builder, fe *semantic.FunctionExpression) llvm.Type {
-	// For now, assume all inputs are int64 and output is int64
-	rty := llvm.Int64Type()
-
-	ptys := make([]llvm.Type, len(fe.Block.Parameters.List))
-	for i := range ptys {
-		ptys[i] = llvm.Int64Type()
-	}
-	return llvm.FunctionType(rty, ptys, false)
 }

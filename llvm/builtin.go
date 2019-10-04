@@ -8,15 +8,15 @@ import (
 )
 
 const (
-	printlnI64Fmt = "println_i64_fmt"
-	printlnStrFmt = "println_str_fmt"
+	printlnI64Fmt    = "println_i64_fmt"
+	printlnStrFmt    = "println_str_fmt"
 	printlnDoubleFmt = "println_double_fmt"
 )
 
 type builtinInfo struct {
-	name    string
-	typ     llvm.Type
-	nargs   int
+	name        string
+	typ         llvm.Type
+	nargs       int
 	getLLVMArgs func(b *builder, fluxArgs *semantic.ObjectExpression) ([]llvm.Value, error)
 }
 
@@ -58,7 +58,7 @@ func init() {
 				default:
 					return nil, fmt.Errorf("unsupported type to println: %v", typ)
 				}
-				cast := b.b.CreatePointerCast(format, i8PtrTy, "")
+				cast := b.b.CreatePointerCast(format, llvmStringType, "")
 				llvmArgs[0] = cast
 
 				semantic.Walk(b, fluxArg)
@@ -69,11 +69,8 @@ func init() {
 		},
 	}
 	globalStrings = map[string]string{
-		printlnI64Fmt: "%lld\n",
-		printlnStrFmt: "%s\n",
+		printlnI64Fmt:    "%lld\n",
+		printlnStrFmt:    "%s\n",
 		printlnDoubleFmt: "%f\n",
 	}
 }
-
-
-

@@ -14,6 +14,7 @@ func TestBuilder(t *testing.T) {
 		name string
 		flux string
 		want []string
+		err  string
 	}{
 		{
 			name: "simple",
@@ -208,7 +209,17 @@ entry:
 }
 `},
 		},
+		{
+			name: "polymorphic function",
+			flux: `ident = (v) => v
+ident(v: 1)
+ident(v: 20.0)
+ident(v: "foo")
+`,
+			err: "call needs specialization",
+		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			astPkg, err := flux.Parse(tc.flux)
 			if err != nil {
@@ -216,8 +227,15 @@ entry:
 			}
 
 			llvmMod, err := llvm.Build(astPkg)
-			if err != nil {
+			if tc.err == "" && err != nil {
 				t.Fatal(err)
+			} else if tc.err != "" && err == nil {
+				t.Fatalf("expected test to fail with %q but it passed", tc.err)
+			} else if tc.err != "" && err != nil {
+				if !strings.Contains(err.Error(), tc.err) {
+					t.Fatalf("expected test to fail with %q but got %q", tc.err, err.Error())
+				}
+				return
 			}
 
 			llvmText := llvmMod.String()
