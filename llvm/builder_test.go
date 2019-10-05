@@ -212,11 +212,25 @@ entry:
 		{
 			name: "polymorphic function",
 			flux: `ident = (v) => v
-ident(v: 1)
+//ident(v: 1)
 ident(v: 20.0)
-ident(v: "foo")
+//ident(v: "foo")
 `,
 			err: "call needs specialization",
+		},
+		{
+			name: "concatenate strings",
+			flux: `"foo" + "bar"`,
+			want: []string{
+				`
+  %s1_len = call i32 @strlen(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @str, i32 0, i32 0))
+  %s2_len = call i32 @strlen(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @str.1, i32 0, i32 0))
+  %sum_len = add i32 %s1_len, %s2_len
+  %alloc_len = add i32 %sum_len, 1
+  %res_buf = call i8* @malloc(i32 %alloc_len)
+  %strcpy = call i8* @strcpy(i8* %res_buf, i8* getelementptr inbounds ([4 x i8], [4 x i8]* @str, i32 0, i32 0))
+  %strcat = call i8* @strcat(i8* %res_buf, i8* getelementptr inbounds ([4 x i8], [4 x i8]* @str.1, i32 0, i32 0))`,
+			},
 		},
 	} {
 		tc := tc
@@ -247,5 +261,4 @@ ident(v: "foo")
 			}
 		})
 	}
-
 }

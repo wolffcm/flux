@@ -60,9 +60,8 @@ func Build(astPkg *ast.Package) (mod llvm.Module, err error) {
 		v.b.CreateGlobalStringPtr(str, name)
 	}
 
-	semantic.Walk(v, pkg)
-	if v.err != nil {
-		return llvm.Module{}, fmt.Errorf("coult not generate IR: %v", v.err)
+	if err := v.Walk(pkg); err != nil {
+		return llvm.Module{}, fmt.Errorf("could not generate IR: %v", v.err)
 	}
 	v.b.CreateRetVoid()
 
@@ -178,6 +177,14 @@ func (b *builder) peek() llvm.Value {
 	return b.values[len(b.values)-1]
 }
 
+func (b *builder) Walk(node semantic.Node) error {
+	semantic.Walk(b, node)
+	if b.err != nil {
+		return b.err
+	}
+	return nil
+}
+
 func (b *builder) Visit(node semantic.Node) semantic.Visitor {
 	if b.err != nil {
 		return nil
@@ -188,7 +195,9 @@ func (b *builder) Visit(node semantic.Node) semantic.Visitor {
 	case *semantic.ConditionalExpression:
 
 		// Generate code for test, leave register on stack
-		semantic.Walk(b, n.Test)
+		if err := b.Walk(n.Test); err != nil {
+			return nil
+		}
 
 		cs := condState{
 			before: b.b.GetInsertBlock(),
@@ -197,13 +206,17 @@ func (b *builder) Visit(node semantic.Node) semantic.Visitor {
 
 		cs.consEntry = llvm.AddBasicBlock(b.f, fmt.Sprintf("true%d", b.newID()))
 		b.b.SetInsertPointAtEnd(cs.consEntry)
-		semantic.Walk(b, n.Consequent)
+		if err := b.Walk(n.Consequent); err != nil {
+			return nil
+		}
 		b.b.CreateBr(cs.after)
 		cs.consExit = b.b.GetInsertBlock()
 
 		cs.altEntry = llvm.AddBasicBlock(b.f, fmt.Sprintf("false%d", b.newID()))
 		b.b.SetInsertPointAtEnd(cs.altEntry)
-		semantic.Walk(b, n.Alternate)
+		if err := b.Walk(n.Alternate); err != nil {
+			return nil
+		}
 		b.b.CreateBr(cs.after)
 		cs.altExit = b.b.GetInsertBlock()
 
@@ -258,6 +271,8 @@ func (b *builder) Done(node semantic.Node) {
 			v, err = b.genBinaryIntInsn(n, op1, op2)
 		case llvmFloatType:
 			v, err = b.genBinaryFloatInsn(n, op1, op2)
+		case llvmStringType:
+			v, err = b.genBinaryStringInsn(n, op1, op2)
 		default:
 			err = errors.New("unable to gen binary insn for type of " + t.String())
 		}
@@ -315,7 +330,7 @@ func (b *builder) Done(node semantic.Node) {
 
 func (b *builder) genBinaryFloatInsn(node *semantic.BinaryExpression, op1, op2 llvm.Value) (llvm.Value, error) {
 	var v llvm.Value
-	switch node.Operator {
+	switch o := node.Operator; o {
 	case ast.AdditionOperator:
 		v = b.b.CreateFAdd(op1, op2, "")
 	case ast.SubtractionOperator:
@@ -335,7 +350,7 @@ func (b *builder) genBinaryFloatInsn(node *semantic.BinaryExpression, op1, op2 l
 	case ast.LessThanEqualOperator:
 		v = b.b.CreateFCmp(llvm.FloatOLE, op1, op2, "")
 	default:
-		return llvm.Value{}, errors.New("unsupported binary operand")
+		return llvm.Value{}, errors.New("unsupported binary operand for float: " + o.String())
 	}
 
 	return v, nil
@@ -363,7 +378,27 @@ func (b *builder) genBinaryIntInsn(node *semantic.BinaryExpression, op1, op2 llv
 	case ast.LessThanEqualOperator:
 		v = b.b.CreateICmp(llvm.IntSLE, op1, op2, "")
 	default:
-		return llvm.Value{}, errors.New("unsupported binary operand " + o.String())
+		return llvm.Value{}, errors.New("unsupported binary operand for int: " + o.String())
+	}
+
+	return v, nil
+}
+
+func (b *builder) genBinaryStringInsn(node *semantic.BinaryExpression, op1, op2 llvm.Value) (llvm.Value, error) {
+	var v llvm.Value
+	switch o := node.Operator; o {
+	case ast.AdditionOperator:
+		s1Len := b.b.CreateCall(b.m.NamedFunction("strlen"), []llvm.Value{op1}, "s1_len")
+		s2Len := b.b.CreateCall(b.m.NamedFunction("strlen"), []llvm.Value{op2}, "s2_len")
+
+		allocLen := b.b.CreateAdd(s1Len, s2Len, "sum_len")
+		allocLen = b.b.CreateAdd(allocLen, llvm.ConstInt(llvmSizeType, 1, false), "alloc_len")
+		resultBuf := b.b.CreateCall(b.m.NamedFunction("malloc"), []llvm.Value{allocLen}, "res_buf")
+
+		b.b.CreateCall(b.m.NamedFunction("strcpy"), []llvm.Value{resultBuf, op1}, "strcpy")
+		v = b.b.CreateCall(b.m.NamedFunction("strcat"), []llvm.Value{resultBuf, op2}, "strcat")
+	default:
+		return llvm.Value{}, errors.New("unsupported binary operand for string: " + o.String())
 	}
 
 	return v, nil

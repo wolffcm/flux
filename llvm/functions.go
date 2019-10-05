@@ -14,7 +14,9 @@ func (b *builder) buildCallExpression(callExpr *semantic.CallExpression) semanti
 
 	// Generate code for the callee.
 	// It might be an identifier, or something else.
-	semantic.Walk(b, callExpr.Callee)
+	if err := b.Walk(callExpr.Callee); err != nil {
+		return nil
+	}
 	callee := b.pop()
 
 	// Determine if this is a call to a builtin or a function defined in Flux.
@@ -48,10 +50,7 @@ func (b *builder) buildFluxCallExpression(callExpr *semantic.CallExpression, cal
 		return nil
 	}
 	llvmCalleeType, _ := polyTypeToLLVMType(fluxCalleeType, true)
-	fmt.Println("llvm call expr callee type: ", llvmCalleeType.String())
-
 	llvmDefType := callee.Type().ElementType()
-
 	if llvmDefType != llvmCalleeType {
 		b.err = fmt.Errorf("call needs specialization; definition type is %v, callsite type is %v", llvmDefType, llvmCalleeType)
 		return nil
@@ -60,7 +59,9 @@ func (b *builder) buildFluxCallExpression(callExpr *semantic.CallExpression, cal
 	args := callExpr.Arguments.Properties
 	llvmArgs := make([]llvm.Value, len(args))
 	for i, a := range args {
-		semantic.Walk(b, a.Value)
+		if err := b.Walk(a.Value); err != nil {
+			return nil
+		}
 		llvmArgs[i] = b.pop()
 	}
 
@@ -109,13 +110,17 @@ func (b *builder) buildFunctionExpression(fe *semantic.FunctionExpression) seman
 	}
 
 	if e, ok := fe.Block.Body.(semantic.Expression); ok {
-		semantic.Walk(b, e)
+		if err := b.Walk(e); err != nil {
+			return nil
+		}
 		v := b.pop()
 		b.b.CreateRet(v)
 	} else {
 		block := fe.Block.Body.(*semantic.Block)
 		for _, stmt := range block.Body {
-			semantic.Walk(b, stmt)
+			if err := b.Walk(stmt); err != nil {
+				return nil
+			}
 		}
 	}
 

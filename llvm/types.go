@@ -13,6 +13,7 @@ var (
 	llvmStringType = llvm.PointerType(llvm.Int8Type(), 0)
 	llvmIntType    = llvm.Int64Type()
 	llvmFloatType  = llvm.DoubleType()
+	llvmSizeType   = llvm.Int32Type()
 )
 
 type fnSigger interface {

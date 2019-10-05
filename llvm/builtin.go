@@ -16,7 +16,6 @@ const (
 type builtinInfo struct {
 	name        string
 	typ         llvm.Type
-	nargs       int
 	getLLVMArgs func(b *builder, fluxArgs *semantic.ObjectExpression) ([]llvm.Value, error)
 }
 
@@ -29,12 +28,9 @@ func init() {
 			name: "printf",
 			typ: llvm.FunctionType(
 				llvm.Int32Type(),
-				[]llvm.Type{
-					llvm.PointerType(llvm.Int8Type(), 0),
-				},
+				[]llvm.Type{llvmStringType},
 				true,
 			),
-			nargs: 2,
 			getLLVMArgs: func(b *builder, fluxArgs *semantic.ObjectExpression) ([]llvm.Value, error) {
 				llvmArgs := make([]llvm.Value, 2)
 				fluxArg := fluxArgs.Properties[0].Value
@@ -61,11 +57,48 @@ func init() {
 				cast := b.b.CreatePointerCast(format, llvmStringType, "")
 				llvmArgs[0] = cast
 
-				semantic.Walk(b, fluxArg)
+				if err := b.Walk(fluxArg); err != nil {
+					return nil, err
+				}
 				llvmArgs[1] = b.pop()
 
 				return llvmArgs, nil
 			},
+		},
+		"strcat": {
+			name: "strcat",
+			typ: llvm.FunctionType(
+				llvmStringType,
+				[]llvm.Type{
+					llvmStringType,
+					llvmStringType,
+				},
+				false,
+			),
+		},
+		"strlen": {
+			name: "strlen",
+			typ: llvm.FunctionType(
+				llvmSizeType,
+				[]llvm.Type{llvmStringType},
+				false,
+			),
+		},
+		"strcpy": {
+			name: "strcpy",
+			typ: llvm.FunctionType(
+				llvmStringType,
+				[]llvm.Type{llvmStringType, llvmStringType},
+				false,
+			),
+		},
+		"malloc": {
+			name: "malloc",
+			typ: llvm.FunctionType(
+				llvmStringType,
+				[]llvm.Type{llvmSizeType},
+				false,
+			),
 		},
 	}
 	globalStrings = map[string]string{
