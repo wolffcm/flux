@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -31,6 +32,7 @@ func init() {
 func serveE(cmd *cobra.Command, args []string) error {
 	http.HandleFunc("/", handler)
 	http.HandleFunc("/generated_files/", generatedFilesHandler)
+	http.HandleFunc("/favicon.ico", iconHandler)
 	fmt.Println("Serving on http://localhost:8080...")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 	return nil
@@ -43,6 +45,7 @@ var jsFiles = map[string][]byte{}
 var body string = `<!DOCTYPE html>
 <html>
 <head>
+<title>Compile and Execute Flux</title>
 <link href="https://fonts.googleapis.com/css?family=Roboto|Roboto+Mono&display=swap" rel="stylesheet">
 <style>
 
@@ -202,7 +205,7 @@ textarea {
 `
 
 func handler(w http.ResponseWriter, r *http.Request) {
-	log.Println("handling request")
+	log.Println("handling request: " + r.URL.String())
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -220,7 +223,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func generatedFilesHandler(w http.ResponseWriter, r *http.Request) {
-	log.Println("handling file request")
+	log.Println("handling file request: " + r.URL.String())
 	_, file := path.Split(r.URL.String())
 	if strings.Contains(file, ".wasm") {
 		bytes, ok := wasmFiles[file]
@@ -239,6 +242,26 @@ func generatedFilesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Error(w, "unknown file "+file, http.StatusBadRequest)
+}
+
+func iconHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println("handling icon request")
+	w.Header().Add("content-type", "image/x-icon")
+	f, err := os.Open("./assets/favicon.ico")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = fmt.Fprintf(w, "could not open icon: %s", err.Error())
+		return
+	}
+	if n, err := io.Copy(w, f); err != nil {
+		if n == 0 {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = fmt.Fprintf(w, "could not copy: %s", err.Error())
+		} else {
+			log.Printf("could not copy: %s", err.Error())
+			log.Printf("transmitted %d bytes", n)
+		}
+	}
 }
 
 func processFlux(inputFlux string) (string, string, string) {
