@@ -188,35 +188,72 @@ println(v: x)
 `,
 			want: []string{`
 entry:
-  %f = alloca i64 (i64)*
-  store i64 (i64)* @fun, i64 (i64)** %f
-  %0 = load i64 (i64)*, i64 (i64)** %f
-  %1 = call i64 %0(i64 3)
-  %x = alloca i64
-  store i64 %1, i64* %x
-  %2 = load i64, i64* %x
-  %3 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([6 x i8], [6 x i8]* @println_i64_fmt, i32 0, i32 0), i64 %2)
-  ret void
+ %f = alloca i64 (i64)*
+ store i64 (i64)* @fun, i64 (i64)** %f
+ %0 = load i64 (i64)*, i64 (i64)** %f
+ %1 = call i64 %0(i64 3)
+ %x = alloca i64
+ store i64 %1, i64* %x
+ %2 = load i64, i64* %x
+ %3 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([6 x i8], [6 x i8]* @println_i64_fmt, i32 0, i32 0), i64 %2)
+ ret void
 `, `
-define i64 @fun(i64) {
+define i64 @f(i64) {
 entry:
-  %n = alloca i64
-  store i64 %0, i64* %n
-  %1 = load i64, i64* %n
-  %2 = load i64, i64* %n
-  %3 = mul i64 %1, %2
-  ret i64 %3
+ %n = alloca i64
+ store i64 %0, i64* %n
+ %1 = load i64, i64* %n
+ %2 = load i64, i64* %n
+ %3 = mul i64 %1, %2
+ ret i64 %3
 }
 `},
 		},
 		{
 			name: "polymorphic function",
 			flux: `ident = (v) => v
-//ident(v: 1)
+ident(v: 1)
 ident(v: 20.0)
-//ident(v: "foo")
+ident(v: "foo")
 `,
-			err: "call needs specialization",
+			want: []string{`
+define void @flux_main() {
+entry:
+ %ident = alloca i64 (i64)*
+ store i64 (i64)* @ident, i64 (i64)** %ident
+ %0 = load i64 (i64)*, i64 (i64)** %ident
+ %1 = call i64 %0(i64 1)
+ %2 = load i64 (i64)*, i64 (i64)** %ident
+ %3 = call double @ident.1(double 2.000000e+01)
+ %4 = load i64 (i64)*, i64 (i64)** %ident
+ %5 = call i8* @ident.2(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @str, i32 0, i32 0))
+ ret void
+}
+
+define i64 @ident(i64) {
+entry:
+ %v = alloca i64
+ store i64 %0, i64* %v
+ %1 = load i64, i64* %v
+ ret i64 %1
+}
+
+define double @ident.1(double) {
+entry:
+ %v = alloca double
+ store double %0, double* %v
+ %1 = load double, double* %v
+ ret double %1
+}
+
+define i8* @ident.2(i8*) {
+entry:
+ %v = alloca i8*
+ store i8* %0, i8** %v
+ %1 = load i8*, i8** %v
+ ret i8* %1
+}`,
+			},
 		},
 		{
 			name: "concatenate strings",

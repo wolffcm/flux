@@ -3,151 +3,24 @@ package llvm
 import (
 	"errors"
 	"fmt"
-	"github.com/influxdata/flux"
 	"github.com/influxdata/flux/ast"
 	"github.com/influxdata/flux/semantic"
 	"github.com/llvm-mirror/llvm/bindings/go/llvm"
-	"runtime/debug"
-	"sort"
 )
-
-const (
-	target   = "asmjs-unknown-emscripten"
-	mainFunc = "flux_main"
-)
-
-func Build(astPkg *ast.Package) (mod llvm.Module, err error) {
-	defer func() {
-		if e := recover(); e != nil {
-			mod = llvm.Module{}
-			err = fmt.Errorf("panic: %v\nstack:\n%v", e, string(debug.Stack()))
-		}
-	}()
-
-	pkg, ts, err := toSemantic(astPkg)
-	if err != nil {
-		return llvm.Module{}, err
-	}
-	v := &builder{
-		ts:                   ts,
-		b:                    llvm.NewBuilder(),
-		names:                make(map[string]llvm.Value),
-		condStates:           make(map[*semantic.ConditionalExpression]condState),
-		builtinReverseLookup: make(map[llvm.Value]builtinInfo),
-		env:                  make(map[string]semantic.Expression),
-	}
-	mod = llvm.NewModule("flux_module")
-
-	// Declare builtins
-	for _, bi := range builtins {
-		llvm.AddFunction(mod, bi.name, bi.typ)
-		fn := mod.NamedFunction(bi.name)
-		v.builtinReverseLookup[fn] = bi
-	}
-
-	// Create top-level function
-	main := llvm.FunctionType(llvm.VoidType(), []llvm.Type{}, false)
-	llvm.AddFunction(mod, mainFunc, main)
-	mainFunc := mod.NamedFunction(mainFunc)
-	v.m = mod
-	v.f = mainFunc
-	block := llvm.AddBasicBlock(mainFunc, "entry")
-
-	v.b.SetInsertPointAtEnd(block)
-
-	// Define global strings
-	for name, str := range globalStrings {
-		v.b.CreateGlobalStringPtr(str, name)
-	}
-
-	if err := v.Walk(pkg); err != nil {
-		return llvm.Module{}, fmt.Errorf("could not generate IR: %v", v.err)
-	}
-	v.b.CreateRetVoid()
-
-	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
-		return llvm.Module{}, fmt.Errorf("error verifying module: %v", err.Error())
-	}
-
-	mod.SetTarget(target)
-
-	return mod, nil
-}
-
-func toSemantic(astPkg *ast.Package) (semantic.Node, semantic.TypeSolution, error) {
-	semPkg, err := semantic.New(astPkg)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Sort arguments in each call expression, to avoid having to do it
-	// later every time we visit a call.
-	sortCallParams(semPkg)
-
-	extern := &semantic.Extern{
-		Block: &semantic.ExternBlock{
-			Node: semPkg,
-		},
-	}
-	extern.Assignments = []*semantic.ExternalVariableAssignment{
-		{
-			Identifier: &semantic.Identifier{
-				Name: "println",
-			},
-			ExternType: semantic.NewFunctionPolyType(semantic.FunctionPolySignature{
-				Parameters: map[string]semantic.PolyType{"v": semantic.Tvar(1)},
-				Required:   semantic.LabelSet([]string{"v"}),
-				Return:     semantic.Int,
-			}),
-		},
-	}
-	ts, err := semantic.InferTypes(extern, flux.StdLib())
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return extern, ts, nil
-}
-
-func sortCallParams(semPkg semantic.Node) {
-	semantic.Walk(paramSortingVisitor{}, semPkg)
-}
-
-type paramSortingVisitor struct{}
-
-func (v paramSortingVisitor) Visit(node semantic.Node) semantic.Visitor {
-	return v
-}
-
-func (paramSortingVisitor) Done(node semantic.Node) {
-	if ce, ok := node.(*semantic.CallExpression); ok {
-		args := ce.Arguments.Properties
-		sort.Slice(args, func(i, j int) bool {
-			return args[i].Key.Key() < args[j].Key.Key()
-		})
-	} else if fe, ok := node.(*semantic.FunctionExpression); ok {
-		params := fe.Block.Parameters.List
-		sort.Slice(params, func(i, j int) bool {
-			return params[i].Key.Name < params[j].Key.Name
-		})
-	}
-}
 
 type builder struct {
-	ts     semantic.TypeSolution
-	m      llvm.Module
-	f      llvm.Value
-	values []llvm.Value
-	b      llvm.Builder
-	names  map[string]llvm.Value
-	idCtr  int64
-
-	builtinReverseLookup map[llvm.Value]builtinInfo
-
 	err error
 
+	idCtr  int64
+
+	typeSol    semantic.TypeSolution
+	module     llvm.Module
+	b          llvm.Builder
+
+	currentFn  llvm.Value
+	valueStack []llvm.Value
 	condStates map[*semantic.ConditionalExpression]condState
-	env        map[string]semantic.Expression
+	symTab *symbolTable
 }
 
 type condState struct {
@@ -164,17 +37,17 @@ func (b *builder) newID() int64 {
 }
 
 func (b *builder) push(v llvm.Value) {
-	b.values = append(b.values, v)
+	b.valueStack = append(b.valueStack, v)
 }
 
 func (b *builder) pop() llvm.Value {
-	v := b.values[len(b.values)-1]
-	b.values = b.values[:len(b.values)-1]
+	v := b.valueStack[len(b.valueStack)-1]
+	b.valueStack = b.valueStack[:len(b.valueStack)-1]
 	return v
 }
 
 func (b *builder) peek() llvm.Value {
-	return b.values[len(b.values)-1]
+	return b.valueStack[len(b.valueStack)-1]
 }
 
 func (b *builder) Walk(node semantic.Node) error {
@@ -191,7 +64,11 @@ func (b *builder) Visit(node semantic.Node) semantic.Visitor {
 	}
 	switch n := node.(type) {
 	case *semantic.NativeVariableAssignment:
-		b.env[n.Identifier.Name] = n.Init
+		err := b.symTab.addEntry(n.Identifier.Name, n.Init, nil)
+		if err != nil {
+			b.err = err
+			return nil
+		}
 	case *semantic.ConditionalExpression:
 
 		// Generate code for test, leave register on stack
@@ -201,10 +78,10 @@ func (b *builder) Visit(node semantic.Node) semantic.Visitor {
 
 		cs := condState{
 			before: b.b.GetInsertBlock(),
-			after:  llvm.AddBasicBlock(b.f, fmt.Sprintf("merge%d", b.newID())),
+			after:  llvm.AddBasicBlock(b.currentFn, fmt.Sprintf("merge%d", b.newID())),
 		}
 
-		cs.consEntry = llvm.AddBasicBlock(b.f, fmt.Sprintf("true%d", b.newID()))
+		cs.consEntry = llvm.AddBasicBlock(b.currentFn, fmt.Sprintf("true%d", b.newID()))
 		b.b.SetInsertPointAtEnd(cs.consEntry)
 		if err := b.Walk(n.Consequent); err != nil {
 			return nil
@@ -212,7 +89,7 @@ func (b *builder) Visit(node semantic.Node) semantic.Visitor {
 		b.b.CreateBr(cs.after)
 		cs.consExit = b.b.GetInsertBlock()
 
-		cs.altEntry = llvm.AddBasicBlock(b.f, fmt.Sprintf("false%d", b.newID()))
+		cs.altEntry = llvm.AddBasicBlock(b.currentFn, fmt.Sprintf("false%d", b.newID()))
 		b.b.SetInsertPointAtEnd(cs.altEntry)
 		if err := b.Walk(n.Alternate); err != nil {
 			return nil
@@ -242,23 +119,34 @@ func (b *builder) Done(node semantic.Node) {
 	}
 	switch n := node.(type) {
 	case *semantic.NativeVariableAssignment:
+		name := n.Identifier.Name
 		v := b.pop()
-		b.names[n.Identifier.Name] = b.b.CreateAlloca(v.Type(), n.Identifier.Name)
-		b.b.CreateStore(v, b.names[n.Identifier.Name])
+		typ := v.Type()
+		alloca := b.b.CreateAlloca(typ, name)
+		b.b.CreateStore(v, alloca)
+		if err := b.symTab.addEntry(name, n.Init, &alloca); err != nil {
+			b.err = err
+			return
+		}
 	case *semantic.ExpressionStatement:
 		b.pop()
 	case *semantic.IdentifierExpression:
-		if v, ok := b.names[n.Name]; ok {
-			lv := b.b.CreateLoad(v, "")
-			b.push(lv)
-		} else {
+		v, err := b.symTab.getSingleValue(n.Name)
+		if err != nil && err != symbolNotFound {
+			b.err = err
+			return
+		} else if err == symbolNotFound {
 			// Must be a call to a pre-defined function
+			// TODO(cwolff): add predfined symbols to table
 			bi, ok := builtins[n.Name]
 			if !ok {
 				b.err = errors.New("Undefined identifier: " + n.Name)
 			}
-			callee := b.m.NamedFunction(bi.name)
+			callee := b.module.NamedFunction(bi.name)
 			b.push(callee)
+		} else {
+			lv := b.b.CreateLoad(v, "")
+			b.push(lv)
 		}
 	case *semantic.BinaryExpression:
 		op2 := b.pop()
@@ -388,15 +276,17 @@ func (b *builder) genBinaryStringInsn(node *semantic.BinaryExpression, op1, op2 
 	var v llvm.Value
 	switch o := node.Operator; o {
 	case ast.AdditionOperator:
-		s1Len := b.b.CreateCall(b.m.NamedFunction("strlen"), []llvm.Value{op1}, "s1_len")
-		s2Len := b.b.CreateCall(b.m.NamedFunction("strlen"), []llvm.Value{op2}, "s2_len")
+		s1Len := b.b.CreateCall(b.module.NamedFunction("strlen"), []llvm.Value{op1}, "s1_len")
+		s2Len := b.b.CreateCall(b.module.NamedFunction("strlen"), []llvm.Value{op2}, "s2_len")
 
 		allocLen := b.b.CreateAdd(s1Len, s2Len, "sum_len")
 		allocLen = b.b.CreateAdd(allocLen, llvm.ConstInt(llvmSizeType, 1, false), "alloc_len")
-		resultBuf := b.b.CreateCall(b.m.NamedFunction("malloc"), []llvm.Value{allocLen}, "res_buf")
 
-		b.b.CreateCall(b.m.NamedFunction("strcpy"), []llvm.Value{resultBuf, op1}, "strcpy")
-		v = b.b.CreateCall(b.m.NamedFunction("strcat"), []llvm.Value{resultBuf, op2}, "strcat")
+		// This allocation is never freed, and is a memory leak in the generated code.
+		resultBuf := b.b.CreateCall(b.module.NamedFunction("malloc"), []llvm.Value{allocLen}, "res_buf")
+
+		b.b.CreateCall(b.module.NamedFunction("strcpy"), []llvm.Value{resultBuf, op1}, "strcpy")
+		v = b.b.CreateCall(b.module.NamedFunction("strcat"), []llvm.Value{resultBuf, op2}, "strcat")
 	default:
 		return llvm.Value{}, errors.New("unsupported binary operand for string: " + o.String())
 	}

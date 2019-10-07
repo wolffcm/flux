@@ -36,7 +36,7 @@ func init() {
 				fluxArg := fluxArgs.Properties[0].Value
 
 				var format llvm.Value
-				typ, err := b.ts.TypeOf(fluxArg)
+				typ, err := b.typeSol.TypeOf(fluxArg)
 				if err != nil {
 					// If the type if polymorphic, just assume int64 for now
 					typ = semantic.Int
@@ -46,11 +46,11 @@ func init() {
 				}
 				switch typ {
 				case semantic.Int:
-					format = b.m.NamedGlobal(printlnI64Fmt)
+					format = b.module.NamedGlobal(printlnI64Fmt)
 				case semantic.String:
-					format = b.m.NamedGlobal(printlnStrFmt)
+					format = b.module.NamedGlobal(printlnStrFmt)
 				case semantic.Float:
-					format = b.m.NamedGlobal(printlnDoubleFmt)
+					format = b.module.NamedGlobal(printlnDoubleFmt)
 				default:
 					return nil, fmt.Errorf("unsupported type to println: %v", typ)
 				}

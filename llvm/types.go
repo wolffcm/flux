@@ -21,7 +21,7 @@ type fnSigger interface {
 }
 
 func (b *builder) getLLVMType(node semantic.Node, allowTypeVars bool) (llvm.Type, error) {
-	pt, err := b.ts.PolyTypeOf(node)
+	pt, err := b.typeSol.PolyTypeOf(node)
 	if err != nil {
 		return llvm.Type{}, err
 	}

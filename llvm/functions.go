@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/influxdata/flux/semantic"
 	"github.com/llvm-mirror/llvm/bindings/go/llvm"
+	"log"
 )
 
 func (b *builder) buildCallExpression(callExpr *semantic.CallExpression) semantic.Visitor {
@@ -12,48 +13,92 @@ func (b *builder) buildCallExpression(callExpr *semantic.CallExpression) semanti
 		b.err = errors.New("pipe expression unsupported")
 	}
 
+	var name string
+	if id, ok := callExpr.Callee.(*semantic.IdentifierExpression); ok {
+		name = id.Name
+	}
+
+	//// Generate code for the callee.
+	//// It might be an identifier, or something else.
+	//if err := b.Walk(callExpr.Callee); err != nil {
+	//	return nil
+	//}
+	//callee := b.pop()
+
+	// Determine if this is a call to a builtin or a function defined in Flux.
+	if bi, ok := builtins[name]; ok {
+		return b.buildBuiltinCallExpression(bi, callExpr)
+	} else {
+		return b.buildFluxCallExpression(callExpr)
+	}
+}
+
+func (b *builder) buildBuiltinCallExpression(bi builtinInfo, callExpr *semantic.CallExpression) semantic.Visitor {
 	// Generate code for the callee.
-	// It might be an identifier, or something else.
 	if err := b.Walk(callExpr.Callee); err != nil {
 		return nil
 	}
 	callee := b.pop()
 
-	// Determine if this is a call to a builtin or a function defined in Flux.
-	if bi, ok := b.builtinReverseLookup[callee]; ok {
-		return b.buildBuiltinCallExpression(bi, callExpr, callee)
-	} else {
-		return b.buildFluxCallExpression(callExpr, callee)
-	}
-}
-
-func (b *builder) buildBuiltinCallExpression(bi builtinInfo, callExpr *semantic.CallExpression, callee llvm.Value) semantic.Visitor {
 	// this is a builtin
 	llvmArgs, err := bi.getLLVMArgs(b, callExpr.Arguments)
 	if err != nil {
 		b.err = err
 		return nil
 	}
+	log.Printf("generating call to builtin %q with type %s", bi.name, callee.Type())
 	v := b.b.CreateCall(callee, llvmArgs, "")
 	b.push(v)
 	return nil
 }
 
-// Function expressions in Flux will be assigned general types with
-// type variables.  At the callsite we will know the actual types
-// required and can generate the corresponding code.
-
-func (b *builder) buildFluxCallExpression(callExpr *semantic.CallExpression, callee llvm.Value) semantic.Visitor {
-	fluxCalleeType, err := b.ts.PolyTypeOf(callExpr.Callee)
-	if err != nil {
-		b.err = err
-		return nil
+func (b *builder) buildFluxCallExpression(callExpr *semantic.CallExpression) semantic.Visitor {
+	var calleeName string
+	if id, ok := callExpr.Callee.(*semantic.IdentifierExpression); ok {
+		calleeName = id.Name
 	}
-	llvmCalleeType, _ := polyTypeToLLVMType(fluxCalleeType, true)
-	llvmDefType := callee.Type().ElementType()
-	if llvmDefType != llvmCalleeType {
-		b.err = fmt.Errorf("call needs specialization; definition type is %v, callsite type is %v", llvmDefType, llvmCalleeType)
-		return nil
+
+	var llvmCallee llvm.Value
+	if calleeName != "" {
+		// See if this function expression type differs from the callee type.
+		se := b.symTab.getEntry(calleeName)
+		if se == nil {
+			b.err = fmt.Errorf("could not find callee name %q", calleeName)
+			return nil
+		}
+		fe := se.fluxExpr
+		fnExprType, err := b.typeSol.PolyTypeOf(fe)
+		if err != nil {
+			b.err = err
+			return nil
+		}
+
+		llvmFnType, err := polyTypeToLLVMType(fnExprType, true)
+		if err != nil {
+			b.err = err
+			return nil
+		}
+
+		llvmFnType = llvm.PointerType(llvm.PointerType(llvmFnType, 0), 0)
+		fn := b.symTab.getSpecialization(calleeName, llvmFnType)
+		if fn == nil {
+			fn, err := b.specializeFunction(callExpr)
+			if err != nil {
+				b.err = err
+				return nil
+			}
+			llvmCallee = fn
+		} else {
+			llvmCallee = *fn
+		}
+	} else {
+		// callee must be a function literal
+		err := b.Walk(callExpr.Callee)
+		if err != nil {
+			b.err = err
+			return nil
+		}
+		llvmCallee = b.pop()
 	}
 
 	args := callExpr.Arguments.Properties
@@ -65,7 +110,8 @@ func (b *builder) buildFluxCallExpression(callExpr *semantic.CallExpression, cal
 		llvmArgs[i] = b.pop()
 	}
 
-	v := b.b.CreateCall(callee, llvmArgs, "")
+	fn := b.b.CreateLoad(llvmCallee, calleeName)
+	v := b.b.CreateCall(fn, llvmArgs, "")
 	b.push(v)
 	return nil
 }
@@ -76,37 +122,47 @@ func (b *builder) buildFunctionExpression(fe *semantic.FunctionExpression) seman
 		return nil
 	}
 
+	name := b.symTab.findName(fe)
+	if name == "" {
+		name = "fn"
+	}
+
 	fty, err := b.getLLVMType(fe, true)
 	if err != nil {
 		b.err = err
 		return nil
 	}
 
-	fn := llvm.AddFunction(b.m, "fun", fty)
+	fn := llvm.AddFunction(b.module, name, fty)
 	entry := llvm.AddBasicBlock(fn, "entry")
 
-	caller := b.f
-	callerNames := b.names
+	caller := b.currentFn
+	callerSymTab := b.symTab
 	callerBlock := b.b.GetInsertBlock()
 
 	defer func() {
-		b.f = caller
-		b.names = callerNames
+		b.currentFn = caller
+		b.symTab = callerSymTab
 		b.b.SetInsertPointAtEnd(callerBlock)
 	}()
 
-	b.f = fn
-	b.names = make(map[string]llvm.Value)
+	b.currentFn = fn
+	b.symTab = newSymbolTable()
 	b.b.SetInsertPointAtEnd(entry)
 
 	// The code generator expects identifiers to have addresses, so generate
 	// local variables to hold the arguments.
 	llvmParamTypes := fty.ParamTypes()
 	for i, param := range fn.Params() {
-		name := fe.Block.Parameters.List[i].Key.Name
+		fluxParam := fe.Block.Parameters.List[i]
+		name := fluxParam.Key.Name
 		v := b.b.CreateAlloca(llvmParamTypes[i], name)
 		b.b.CreateStore(param, v)
-		b.names[name] = v
+
+		if err := b.symTab.addEntry(name, fluxParam, &v); err != nil {
+			b.err = err
+			return nil
+		}
 	}
 
 	if e, ok := fe.Block.Body.(semantic.Expression); ok {
@@ -127,4 +183,50 @@ func (b *builder) buildFunctionExpression(fe *semantic.FunctionExpression) seman
 	b.push(fn)
 
 	return nil
+}
+
+func (b *builder) specializeFunction(ce *semantic.CallExpression) (llvm.Value, error) {
+	callee := ce.Callee
+	var defFn *semantic.FunctionExpression
+	id, ok := ce.Callee.(*semantic.IdentifierExpression)
+	if ! ok {
+		// When can this happen?
+		return llvm.Value{}, errors.New("could not find defined function")
+	}
+
+	se := b.symTab.getEntry(id.Name)
+	defFn = se.fluxExpr.(*semantic.FunctionExpression)
+
+	// Update type solution to reflect call arguments
+	origTypeSol := b.typeSol
+	defer func() {
+		b.typeSol = origTypeSol
+	}()
+	b.typeSol = b.typeSol.FreshSolution()
+
+	fnExprType, err := b.typeSol.PolyTypeOf(defFn)
+	if err != nil {
+		return llvm.Value{}, err
+	}
+
+	calleeType, err := b.typeSol.PolyTypeOf(callee)
+	if err != nil {
+		return llvm.Value{}, err
+	}
+
+	if err := b.typeSol.AddConstraint(fnExprType,  calleeType); err != nil {
+		return llvm.Value{}, err
+	}
+	// Regenerate function expression with new type solution
+	if b.buildFunctionExpression(defFn); err != nil {
+		return llvm.Value{}, err
+	}
+
+	fn := b.pop()
+	err = b.symTab.addEntry(id.Name, defFn, &fn)
+	if err != nil {
+		return llvm.Value{}, err
+	}
+
+	return fn, nil
 }
