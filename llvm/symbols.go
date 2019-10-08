@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/influxdata/flux/semantic"
 	"github.com/llvm-mirror/llvm/bindings/go/llvm"
-	"log"
 )
 
 type symbolEntry struct {
@@ -24,9 +23,6 @@ func newSymbolTable() *symbolTable{
 }
 
 func (st *symbolTable) addEntry(name string, fluxExpr semantic.Node, value *llvm.Value) error {
-	if value != nil {
-		log.Printf("adding symbol table entry for %q with value type %s\n", name, value.Type())
-	}
 	if se, ok := st.entries[name]; ok {
 		if fluxExpr != nil && fluxExpr != se.fluxExpr {
 			return fmt.Errorf("found differing flux exprs for symbol %q", name)
@@ -82,14 +78,9 @@ func (st *symbolTable) getEntry(name string) *symbolEntry {
 }
 
 func (st *symbolTable) getSpecialization(name string, lty llvm.Type) *llvm.Value {
-	log.Printf("looking for %q specialization %s", name, lty)
 	se, ok := st.entries[name]
 	if ! ok {
 		return nil
-	}
-
-	for k, _ := range se.llvmValues {
-		log.Printf("found specialization %s", k)
 	}
 
 	v, ok := se.llvmValues[lty]
