@@ -2,8 +2,8 @@ package semantic_test
 
 import (
 	"fmt"
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/semantic"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/semantic"
 	"testing"
 )
 

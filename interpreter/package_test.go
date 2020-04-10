@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/influxdata/flux/dependencies/dependenciestest"
-	"github.com/influxdata/flux/interpreter"
-	"github.com/influxdata/flux/interpreter/interptest"
-	"github.com/influxdata/flux/semantic"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux/dependencies/dependenciestest"
+	"github.com/wolffcm/flux/interpreter"
+	"github.com/wolffcm/flux/interpreter/interptest"
+	"github.com/wolffcm/flux/semantic"
+	"github.com/wolffcm/flux/values"
 )
 
 // Implementation of interpreter.Importer

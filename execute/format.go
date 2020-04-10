@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/values"
 )
 
 const fixedWidthTimeFmt = "2006-01-02T15:04:05.000000000Z"

@@ -3,8 +3,8 @@
 package math
 
 import (
-	flux "github.com/influxdata/flux"
-	ast "github.com/influxdata/flux/ast"
+	flux "github.com/wolffcm/flux"
+	ast "github.com/wolffcm/flux/ast"
 )
 
 func init() {

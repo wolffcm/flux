@@ -5,9 +5,9 @@ package parser
 import (
 	"fmt"
 
-	"github.com/influxdata/flux/ast"
-	"github.com/influxdata/flux/internal/parser"
-	"github.com/influxdata/flux/internal/token"
+	"github.com/wolffcm/flux/ast"
+	"github.com/wolffcm/flux/internal/parser"
+	"github.com/wolffcm/flux/internal/token"
 )
 
 func parseFile(f *token.File, src []byte) (*ast.File, error) {

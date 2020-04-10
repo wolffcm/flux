@@ -6,9 +6,9 @@ import (
 	"github.com/apache/arrow/go/arrow/array"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/arrow"
-	"github.com/influxdata/flux/execute"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/arrow"
+	"github.com/wolffcm/flux/execute"
 )
 
 // AggFuncTestHelper splits the data in half, runs Do over each split and compares

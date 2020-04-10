@@ -3,9 +3,9 @@ package plan_test
 import (
 	"testing"
 
-	"github.com/influxdata/flux/plan"
-	"github.com/influxdata/flux/stdlib/influxdata/influxdb"
-	"github.com/influxdata/flux/stdlib/universe"
+	"github.com/wolffcm/flux/plan"
+	"github.com/wolffcm/flux/stdlib/influxdata/influxdb"
+	"github.com/wolffcm/flux/stdlib/universe"
 )
 
 func TestAny(t *testing.T) {

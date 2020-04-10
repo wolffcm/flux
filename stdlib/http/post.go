@@ -8,12 +8,12 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/internal/errors"
-	"github.com/influxdata/flux/iocounter"
-	"github.com/influxdata/flux/semantic"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/internal/errors"
+	"github.com/wolffcm/flux/iocounter"
+	"github.com/wolffcm/flux/semantic"
+	"github.com/wolffcm/flux/values"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/log"
 )

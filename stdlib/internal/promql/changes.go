@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/plan"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/plan"
 )
 
 const ChangesKind = "changes"

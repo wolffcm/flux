@@ -2,9 +2,9 @@ package table
 
 import (
 	"github.com/apache/arrow/go/arrow/array"
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/internal/errors"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/internal/errors"
 )
 
 // Values returns the array from the column reader as an array.Interface.

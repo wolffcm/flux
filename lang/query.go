@@ -3,8 +3,8 @@ package lang
 import (
 	"sync"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/memory"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/memory"
 	"github.com/opentracing/opentracing-go"
 )
 

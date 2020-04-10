@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/influxdata/flux/ast"
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/internal/errors"
-	"github.com/influxdata/flux/interpreter"
-	"github.com/influxdata/flux/parser"
-	"github.com/influxdata/flux/semantic"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux/ast"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/internal/errors"
+	"github.com/wolffcm/flux/interpreter"
+	"github.com/wolffcm/flux/parser"
+	"github.com/wolffcm/flux/semantic"
+	"github.com/wolffcm/flux/values"
 )
 
 const (
@@ -204,7 +204,7 @@ func (s *scopeSet) Size() int {
 func (s *scopeSet) Range(f func(k string, v values.Value)) {
 	for _, pkg := range s.packages {
 		if pkg == nil {
-			panic(`nil package in scope; try importing "github.com/influxdata/flux/builtin"`)
+			panic(`nil package in scope; try importing "github.com/wolffcm/flux/builtin"`)
 		}
 		pkg.Range(func(k string, v values.Value) {
 			if _, ok := v.(values.Package); ok {

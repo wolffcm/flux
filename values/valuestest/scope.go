@@ -5,9 +5,9 @@ import (
 	"errors"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/semantic"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/semantic"
+	"github.com/wolffcm/flux/values"
 )
 
 // ScopeComparer checks that two scopes are equal in both nesting and contents.

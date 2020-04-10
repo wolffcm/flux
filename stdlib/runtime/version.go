@@ -6,10 +6,10 @@ import (
 	"context"
 	"runtime/debug"
 
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux/values"
 )
 
-const modulePath = "github.com/influxdata/flux"
+const modulePath = "github.com/wolffcm/flux"
 
 // readBuildInfo is used for reading the build information
 // from the binary. This exists to overwrite the value for unit

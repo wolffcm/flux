@@ -4,9 +4,9 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/influxdata/flux/ast"
-	"github.com/influxdata/flux/ast/asttest"
-	"github.com/influxdata/flux/ast/edit"
+	"github.com/wolffcm/flux/ast"
+	"github.com/wolffcm/flux/ast/asttest"
+	"github.com/wolffcm/flux/ast/edit"
 )
 
 func TestMatch(t *testing.T) {

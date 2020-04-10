@@ -6,15 +6,15 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/internal/errors"
-	"github.com/influxdata/flux/interpreter"
-	"github.com/influxdata/flux/memory"
-	"github.com/influxdata/flux/plan"
-	"github.com/influxdata/flux/semantic"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/internal/errors"
+	"github.com/wolffcm/flux/interpreter"
+	"github.com/wolffcm/flux/memory"
+	"github.com/wolffcm/flux/plan"
+	"github.com/wolffcm/flux/semantic"
+	"github.com/wolffcm/flux/values"
 )
 
 const JoinKind = "join"
@@ -735,7 +735,7 @@ func (c *MergeJoinCache) insertIntoBuffer(id execute.DatasetID, tbl flux.Table) 
 			if k.IsNull(j) {
 				// Discard the table and return.  Note: we need to iterate over the
 				// table at least once:
-				// https://github.com/influxdata/flux/issues/643
+				// https://github.com/wolffcm/flux/issues/643
 				return tbl.Do(func(flux.ColReader) error {
 					return nil
 				})

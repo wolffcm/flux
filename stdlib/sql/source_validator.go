@@ -5,9 +5,9 @@ import (
 	"strings"
 
 	"github.com/go-sql-driver/mysql"
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/dependencies/url"
-	"github.com/influxdata/flux/internal/errors"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/dependencies/url"
+	"github.com/wolffcm/flux/internal/errors"
 )
 
 // helper function to validate the data source url (postgres, sqlmock) / dsn (mysql) using the URLValidator.

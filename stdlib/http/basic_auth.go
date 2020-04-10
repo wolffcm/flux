@@ -5,10 +5,10 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/interpreter"
-	"github.com/influxdata/flux/semantic"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/interpreter"
+	"github.com/wolffcm/flux/semantic"
+	"github.com/wolffcm/flux/values"
 )
 
 func init() {

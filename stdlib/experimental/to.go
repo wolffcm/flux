@@ -1,8 +1,8 @@
 package experimental
 
 import (
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/semantic"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/semantic"
 )
 
 // ToKind is the kind for the experimental `to` flux function

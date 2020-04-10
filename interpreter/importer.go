@@ -1,6 +1,6 @@
 package interpreter
 
-import "github.com/influxdata/flux/semantic"
+import "github.com/wolffcm/flux/semantic"
 
 // Importer produces a package given an import path
 type Importer interface {

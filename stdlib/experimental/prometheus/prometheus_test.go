@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	flux "github.com/influxdata/flux"
-	"github.com/influxdata/flux/dependencies/dependenciestest"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/execute/executetest"
-	"github.com/influxdata/flux/mock"
-	"github.com/influxdata/flux/values"
+	flux "github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/dependencies/dependenciestest"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/execute/executetest"
+	"github.com/wolffcm/flux/mock"
+	"github.com/wolffcm/flux/values"
 )
 
 // TestGague will make sure that gague metrics produce accurate flux Tables.

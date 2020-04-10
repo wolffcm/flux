@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/influxdata/flux/builtin"
-	"github.com/influxdata/flux/dependencies/dependenciestest"
-	"github.com/influxdata/flux/internal/spec"
+	_ "github.com/wolffcm/flux/builtin"
+	"github.com/wolffcm/flux/dependencies/dependenciestest"
+	"github.com/wolffcm/flux/internal/spec"
 )
 
 func Benchmark_FromScript(b *testing.B) {

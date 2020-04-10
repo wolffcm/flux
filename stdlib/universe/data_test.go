@@ -3,11 +3,11 @@ package universe_test
 import (
 	"time"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/arrow"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/execute/executetest"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/arrow"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/execute/executetest"
+	"github.com/wolffcm/flux/values"
 	"golang.org/x/exp/rand"
 	"gonum.org/v1/gonum/stat/distuv"
 )

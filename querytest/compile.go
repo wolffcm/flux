@@ -10,12 +10,12 @@ import (
 	"github.com/andreyvit/diff"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/dependencies/dependenciestest"
-	"github.com/influxdata/flux/internal/spec"
-	"github.com/influxdata/flux/semantic/semantictest"
-	"github.com/influxdata/flux/stdlib/universe"
-	"github.com/influxdata/flux/values/valuestest"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/dependencies/dependenciestest"
+	"github.com/wolffcm/flux/internal/spec"
+	"github.com/wolffcm/flux/semantic/semantictest"
+	"github.com/wolffcm/flux/stdlib/universe"
+	"github.com/wolffcm/flux/values/valuestest"
 )
 
 type NewQueryTestCase struct {

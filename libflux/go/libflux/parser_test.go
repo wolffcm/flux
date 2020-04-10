@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/influxdata/flux/libflux/go/libflux"
+	"github.com/wolffcm/flux/libflux/go/libflux"
 )
 
 func TestParse(t *testing.T) {

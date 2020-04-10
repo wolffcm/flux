@@ -3,15 +3,15 @@ package gen
 import (
 	"context"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/internal/errors"
-	"github.com/influxdata/flux/internal/gen"
-	"github.com/influxdata/flux/memory"
-	"github.com/influxdata/flux/plan"
-	"github.com/influxdata/flux/semantic"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/internal/errors"
+	"github.com/wolffcm/flux/internal/gen"
+	"github.com/wolffcm/flux/memory"
+	"github.com/wolffcm/flux/plan"
+	"github.com/wolffcm/flux/semantic"
+	"github.com/wolffcm/flux/values"
 )
 
 const TablesKind = "internal/gen.tables"

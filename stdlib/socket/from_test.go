@@ -9,16 +9,16 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/execute/executetest"
-	"github.com/influxdata/flux/mock"
-	"github.com/influxdata/flux/plan"
-	"github.com/influxdata/flux/querytest"
-	"github.com/influxdata/flux/stdlib/socket"
-	"github.com/influxdata/flux/stdlib/universe"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/execute/executetest"
+	"github.com/wolffcm/flux/mock"
+	"github.com/wolffcm/flux/plan"
+	"github.com/wolffcm/flux/querytest"
+	"github.com/wolffcm/flux/stdlib/socket"
+	"github.com/wolffcm/flux/stdlib/universe"
 
-	_ "github.com/influxdata/flux/builtin" // We need to import the builtins for the tests to work.
+	_ "github.com/wolffcm/flux/builtin" // We need to import the builtins for the tests to work.
 )
 
 func TestFromSocket_NewQuery(t *testing.T) {

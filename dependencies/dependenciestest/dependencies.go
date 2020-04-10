@@ -4,10 +4,10 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/dependencies/filesystem"
-	"github.com/influxdata/flux/dependencies/url"
-	"github.com/influxdata/flux/mock"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/dependencies/filesystem"
+	"github.com/wolffcm/flux/dependencies/url"
+	"github.com/wolffcm/flux/mock"
 )
 
 type RoundTripFunc func(req *http.Request) *http.Response

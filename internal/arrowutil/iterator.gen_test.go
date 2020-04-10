@@ -13,7 +13,7 @@ import (
 	"github.com/apache/arrow/go/arrow/array"
 	"github.com/apache/arrow/go/arrow/memory"
 	"github.com/google/go-cmp/cmp"
-	"github.com/influxdata/flux/internal/arrowutil"
+	"github.com/wolffcm/flux/internal/arrowutil"
 )
 
 func TestIterateInt64s(t *testing.T) {

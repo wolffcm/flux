@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux/values"
 )
 
 func TestSleep(t *testing.T) {

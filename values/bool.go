@@ -1,6 +1,6 @@
 package values
 
-import "github.com/influxdata/flux/semantic"
+import "github.com/wolffcm/flux/semantic"
 
 var (
 	trueValue Value = value{

@@ -1,8 +1,8 @@
 package universe
 
 import (
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/values"
 )
 
 func init() {

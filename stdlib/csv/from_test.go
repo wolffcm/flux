@@ -5,15 +5,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/influxdata/flux"
-	_ "github.com/influxdata/flux/builtin" // We need to import the builtins for the tests to work.
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/execute/executetest"
-	"github.com/influxdata/flux/mock"
-	"github.com/influxdata/flux/querytest"
-	"github.com/influxdata/flux/stdlib/csv"
-	"github.com/influxdata/flux/stdlib/universe"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux"
+	_ "github.com/wolffcm/flux/builtin" // We need to import the builtins for the tests to work.
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/execute/executetest"
+	"github.com/wolffcm/flux/mock"
+	"github.com/wolffcm/flux/querytest"
+	"github.com/wolffcm/flux/stdlib/csv"
+	"github.com/wolffcm/flux/stdlib/universe"
+	"github.com/wolffcm/flux/values"
 )
 
 func TestFromCSV_NewQuery(t *testing.T) {
