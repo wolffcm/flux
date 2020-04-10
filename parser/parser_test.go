@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/influxdata/flux/ast"
@@ -12,6 +13,14 @@ import (
 	"github.com/influxdata/flux/internal/token"
 	"github.com/influxdata/flux/parser"
 )
+
+func wantMetadata() string {
+	if os.Getenv("FLUX_PARSER_TYPE") == "rust" {
+		return "parser-type=rust"
+	} else {
+		return "parser-type=go"
+	}
+}
 
 func TestParseDir(t *testing.T) {
 	tmpDir, err := ioutil.TempDir("", "TestParseDir")
@@ -55,12 +64,14 @@ c = 3
 	if err != nil {
 		t.Fatal(err)
 	}
+	wantMeta := wantMetadata()
 	want := map[string]*ast.Package{
 		"foo": &ast.Package{
 			Package: "foo",
 			Files: []*ast.File{
 				{
-					Name: "a.flux",
+					Name:     "a.flux",
+					Metadata: wantMeta,
 					Package: &ast.PackageClause{
 						Name: &ast.Identifier{Name: "foo"},
 					},
@@ -72,7 +83,8 @@ c = 3
 					},
 				},
 				{
-					Name: "b.flux",
+					Name:     "b.flux",
+					Metadata: wantMeta,
 					Package: &ast.PackageClause{
 						Name: &ast.Identifier{Name: "foo"},
 					},
@@ -88,7 +100,8 @@ c = 3
 		"main": &ast.Package{
 			Package: "main",
 			Files: []*ast.File{{
-				Name: "c.flux",
+				Name:     "c.flux",
+				Metadata: wantMeta,
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
 						ID:   &ast.Identifier{Name: "c"},
@@ -134,7 +147,8 @@ a = 1
 		t.Fatal(err)
 	}
 	want := &ast.File{
-		Name: "a.flux",
+		Name:     "a.flux",
+		Metadata: wantMetadata(),
 		Package: &ast.PackageClause{
 			Name: &ast.Identifier{Name: "foo"},
 		},
@@ -161,7 +175,8 @@ a = 1
 	want := &ast.Package{
 		Package: "foo",
 		Files: []*ast.File{{
-			Name: "",
+			Name:     "",
+			Metadata: wantMetadata(),
 			Package: &ast.PackageClause{
 				Name: &ast.Identifier{Name: "foo"},
 			},
@@ -175,5 +190,17 @@ a = 1
 	}
 	if !cmp.Equal(got, want, asttest.IgnoreBaseNodeOptions...) {
 		t.Errorf("ParseSource unexpected package -want/+got:\n%s", cmp.Diff(want, got, asttest.IgnoreBaseNodeOptions...))
+	}
+}
+
+func TestParseTimeLiteral(t *testing.T) {
+	inputTime := "2018-01-01"
+	got, err := parser.ParseTime(inputTime)
+	if err != nil {
+		t.Errorf(err.Error())
+	}
+	want := time.Date(2018, 1, 1, 0, 0, 0, 0, time.UTC)
+	if !cmp.Equal(got.Value, want, asttest.IgnoreBaseNodeOptions...) {
+		t.Errorf("ParseTimeLiteral failed: %s", cmp.Diff(want, got, asttest.IgnoreBaseNodeOptions...))
 	}
 }

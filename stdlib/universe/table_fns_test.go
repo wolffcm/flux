@@ -1,18 +1,20 @@
 package universe_test
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/influxdata/flux"
+	"github.com/influxdata/flux/dependencies/dependenciestest"
 	"github.com/influxdata/flux/execute/executetest"
-	"github.com/influxdata/flux/interpreter"
+	"github.com/influxdata/flux/lang/langtest"
 	"github.com/influxdata/flux/semantic"
 	"github.com/influxdata/flux/stdlib/universe"
 	"github.com/influxdata/flux/values"
 	"github.com/influxdata/flux/values/objects"
-	"github.com/pkg/errors"
 )
 
 var (
@@ -37,10 +39,10 @@ data = "#datatype,string,long,dateTime:RFC3339,double,string,string
 "
 
 csv.from(csv: data)`
-
-	vs, _, err := flux.Eval(script)
+	ctx := dependenciestest.Default().Inject(context.Background())
+	vs, _, err := flux.Eval(ctx, script)
 	if err != nil {
-		panic(errors.Wrap(err, "cannot compile simple script to prepare test"))
+		panic(fmt.Errorf("cannot compile simple script to prepare test: %s", err))
 	}
 	for _, v := range vs {
 		if v, ok := v.Value.(*flux.TableObject); ok {
@@ -107,7 +109,7 @@ func mustParseTime(t string) values.Time {
 	}
 }
 
-func mustLookup(s interpreter.Scope, valueID string) values.Value {
+func mustLookup(s values.Scope, valueID string) values.Value {
 	v, found := s.Lookup(valueID)
 	if !found {
 		panic(fmt.Errorf("&%s not found in scope", valueID))
@@ -115,10 +117,12 @@ func mustLookup(s interpreter.Scope, valueID string) values.Value {
 	return v
 }
 
-func evalOrFail(t *testing.T, script string, mutator flux.ScopeMutator) interpreter.Scope {
+func evalOrFail(t *testing.T, script string, mutator flux.ScopeMutator) values.Scope {
 	t.Helper()
 
-	_, s, err := flux.Eval(script, func(s interpreter.Scope) {
+	ctx := dependenciestest.Default().Inject(context.Background())
+	ctx = langtest.DefaultExecutionDependencies().Inject(ctx)
+	_, s, err := flux.Eval(ctx, script, func(s values.Scope) {
 		if mutator != nil {
 			mutator(s)
 		}
@@ -131,106 +135,68 @@ func evalOrFail(t *testing.T, script string, mutator flux.ScopeMutator) interpre
 
 func TestTableFind_Call(t *testing.T) {
 	testCases := []struct {
-		name    string
-		want    flux.Table
-		fn      func(key values.Object) (values.Value, error)
-		wantErr error
+		name string
+		want flux.Table
+		fn   string
+		// fn      func(key values.Object) (values.Value, error)
+		wantErr      error
+		omitExecDeps bool
 	}{
 		{
 			name: "exactly one match 1", // first table
 			want: tables[0],
-			fn: func(key values.Object) (values.Value, error) {
-				user, ok := key.Get("user")
-				if !ok {
-					return nil, fmt.Errorf("property not found: user")
-				}
-				m, ok := key.Get("_measurement")
-				if !ok {
-					return nil, fmt.Errorf("property not found: _measurement")
-				}
-				return values.New(user.Str() == "user1" && m.Str() == "CPU"), nil
-			},
+			fn:   `f = (key) => key.user == "user1" and key._measurement == "CPU"`,
 		},
 		{
 			name: "exactly one match 2", // second table
 			want: tables[1],
-			fn: func(key values.Object) (values.Value, error) {
-				user, ok := key.Get("user")
-				if !ok {
-					return nil, fmt.Errorf("property not found: user")
-				}
-				return values.New(user.Str() == "user2"), nil
-			},
+			fn:   `f = (key) => key.user == "user2"`,
 		},
 		{
 			name: "exactly one match 3", // third table
 			want: tables[2],
-			fn: func(key values.Object) (values.Value, error) {
-				user, ok := key.Get("user")
-				if !ok {
-					return nil, fmt.Errorf("property not found: user")
-				}
-				m, ok := key.Get("_measurement")
-				if !ok {
-					return nil, fmt.Errorf("property not found: _measurement")
-				}
-				return values.New(user.Str() == "user1" && m.Str() == "RAM"), nil
-			},
+			fn:   `f = (key) => key.user == "user1" and key._measurement == "RAM"`,
 		},
 		{
 			name: "multiple match", // first and third
 			want: tables[0],
-			fn: func(key values.Object) (values.Value, error) {
-				user, ok := key.Get("user")
-				if !ok {
-					return nil, fmt.Errorf("property not found: user")
-				}
-				return values.New(user.Str() == "user1"), nil
-			},
+			fn:   `f = (key) => key.user == "user1"`,
 		},
 		{
 			name:    "no match",
 			wantErr: fmt.Errorf("no table found"),
-			fn: func(key values.Object) (values.Value, error) {
-				idk, ok := key.Get("user")
-				if !ok {
-					return nil, fmt.Errorf("property not found: user")
-				}
-				return values.New(idk.Str() == "no-user"), nil
-			},
+			fn:      `f = (key) => key.user == "no-user"`,
 		},
 		{
-			name:    "wrong property",
-			wantErr: fmt.Errorf("failed to evaluate group key predicate function: property not found: idk"),
-			fn: func(key values.Object) (values.Value, error) {
-				idk, ok := key.Get("idk")
-				if !ok {
-					return nil, fmt.Errorf("property not found: idk")
-				}
-				return values.New(idk.Str() == "idk"), nil
-			},
+			name:         "no execution context", // notifying the user of no-execution context
+			wantErr:      fmt.Errorf("do not have an execution context for tableFind, if using the repl, try executing this code on the server using the InfluxDB API"),
+			fn:           `f = (key) => key.user == "user1" and key._measurement == "CPU"`,
+			omitExecDeps: true,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			ctx := dependenciestest.Default().Inject(context.Background())
+			if !tc.omitExecDeps {
+				ctx = langtest.DefaultExecutionDependencies().Inject(ctx)
+			}
+			_, scope, err := flux.Eval(ctx, tc.fn)
+			if err != nil {
+				t.Fatalf("error compiling function: %v", err)
+			}
+
+			fn, ok := scope.Lookup("f")
+			if !ok {
+				t.Fatal("must define a function to the f variable")
+			}
+
 			f := universe.NewTableFindFunction()
-			res, err := f.Function().Call(values.NewObjectWithValues(map[string]values.Value{
-				"tables": to,
-				"fn": values.NewFunction("",
-					semantic.NewFunctionPolyType(semantic.FunctionPolySignature{
-						Parameters: map[string]semantic.PolyType{"key": semantic.Tvar(1)},
-						Return:     semantic.Bool,
-					}),
-					func(args values.Object) (values.Value, error) {
-						key, ok := args.Object().Get("key")
-						if !ok {
-							return nil, fmt.Errorf("property not found: key")
-						}
-						return tc.fn(key.Object())
-					},
-					false),
-			}))
+			res, err := f.Function().Call(ctx,
+				values.NewObjectWithValues(map[string]values.Value{
+					"tables": to,
+					"fn":     fn,
+				}))
 			if err != nil {
 				if tc.wantErr != nil {
 					if diff := cmp.Diff(tc.wantErr.Error(), err.Error()); diff != "" {
@@ -241,7 +207,7 @@ func TestTableFind_Call(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			got, err := executetest.ConvertTable(res.(*objects.Table).Table)
+			got, err := executetest.ConvertTable(res.(*objects.Table).Table())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -259,16 +225,19 @@ func TestGetColumn_Call(t *testing.T) {
 // 'inj' is injected in the scope before evaluation
 t = inj |> tableFind(fn: (key) => key.user == "user1")`
 
-	s := evalOrFail(t, script, func(s interpreter.Scope) {
+	s := evalOrFail(t, script, func(s values.Scope) {
 		s.Set("inj", to)
 	})
 	tbl := mustLookup(s, "t")
 
 	f := universe.NewGetColumnFunction()
-	res, err := f.Function().Call(values.NewObjectWithValues(map[string]values.Value{
-		"table":  tbl.(*objects.Table),
-		"column": values.New("user"),
-	}))
+	ctx := dependenciestest.Default().Inject(context.Background())
+	ctx = langtest.DefaultExecutionDependencies().Inject(ctx)
+	res, err := f.Function().Call(ctx,
+		values.NewObjectWithValues(map[string]values.Value{
+			"table":  tbl.(*objects.Table),
+			"column": values.New("user"),
+		}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,10 +251,11 @@ t = inj |> tableFind(fn: (key) => key.user == "user1")`
 
 	// test for error
 	f = universe.NewGetColumnFunction()
-	_, err = f.Function().Call(values.NewObjectWithValues(map[string]values.Value{
-		"table":  tbl.(*objects.Table),
-		"column": values.New("idk"),
-	}))
+	_, err = f.Function().Call(ctx,
+		values.NewObjectWithValues(map[string]values.Value{
+			"table":  tbl.(*objects.Table),
+			"column": values.New("idk"),
+		}))
 	if err == nil {
 		t.Error("expected error got none")
 	}
@@ -301,16 +271,19 @@ func TestGetRecord_Call(t *testing.T) {
 // 'inj' is injected in the scope before evaluation
 t = inj |> tableFind(fn: (key) => key.user == "user1")`
 
-	s := evalOrFail(t, script, func(s interpreter.Scope) {
+	s := evalOrFail(t, script, func(s values.Scope) {
 		s.Set("inj", to)
 	})
 	tbl := mustLookup(s, "t")
 
 	f := universe.NewGetRecordFunction()
-	res, err := f.Function().Call(values.NewObjectWithValues(map[string]values.Value{
-		"table": tbl.(*objects.Table),
-		"idx":   values.New(int64(1)),
-	}))
+	ctx := dependenciestest.Default().Inject(context.Background())
+	ctx = langtest.DefaultExecutionDependencies().Inject(ctx)
+	res, err := f.Function().Call(ctx,
+		values.NewObjectWithValues(map[string]values.Value{
+			"table": tbl.(*objects.Table),
+			"idx":   values.New(int64(1)),
+		}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +293,7 @@ t = inj |> tableFind(fn: (key) => key.user == "user1")`
 		"_time":        values.New(mustParseTime("2018-05-22T19:53:36.000000000Z")),
 		"_value":       values.New(1.0),
 		"_measurement": values.New("CPU"),
-		"user":         values.New("user"),
+		"user":         values.New("user1"),
 	})
 
 	if diff := cmp.Diff(want, got); diff != "" {
@@ -329,10 +302,11 @@ t = inj |> tableFind(fn: (key) => key.user == "user1")`
 
 	// test for error
 	f = universe.NewGetRecordFunction()
-	_, err = f.Function().Call(values.NewObjectWithValues(map[string]values.Value{
-		"table": tbl.(*objects.Table),
-		"idx":   values.New(int64(42)),
-	}))
+	_, err = f.Function().Call(ctx,
+		values.NewObjectWithValues(map[string]values.Value{
+			"table": tbl.(*objects.Table),
+			"idx":   values.New(int64(42)),
+		}))
 	if err == nil {
 		t.Error("expected error got none")
 	}
@@ -363,7 +337,7 @@ columnOK = c[0] == 1.0
 // >>> unsupported binary expression {_value: float,_measurement: string,user: string,_time: time,} == {_value: float,_measurement: string,user: string,_time: time,}
 recordOK = r._time == 2018-05-22T19:53:26Z and r._value == 1.0 and r._measurement == "RAM" and r.user == "user1"`
 
-	s := evalOrFail(t, script, func(s interpreter.Scope) {
+	s := evalOrFail(t, script, func(s values.Scope) {
 		s.Set("inj", to)
 	})
 

@@ -5,12 +5,11 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/influxdata/flux/builtin"
-
 	"github.com/influxdata/flux"
+	_ "github.com/influxdata/flux/builtin"
+	"github.com/influxdata/flux/execute/executetest"
 	"github.com/influxdata/flux/lang"
 	"github.com/influxdata/flux/memory"
-	"github.com/pkg/errors"
 )
 
 func runQuery(script string) (flux.Query, error) {
@@ -18,7 +17,8 @@ func runQuery(script string) (flux.Query, error) {
 	if err != nil {
 		return nil, err
 	}
-	q, err := program.Start(context.Background(), &memory.Allocator{})
+	ctx := executetest.NewTestExecuteDependencies().Inject(context.Background())
+	q, err := program.Start(ctx, &memory.Allocator{})
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ csv.from(csv: data) |> yield(name: "res")`
 func TestQuery_Results(t *testing.T) {
 	q, err := runQuery(validScript)
 	if err != nil {
-		t.Fatal(errors.Wrap(err, "unexpected error while creating query"))
+		t.Fatalf("unexpected error while creating query: %s", err)
 	}
 
 	// gather counts
@@ -65,7 +65,7 @@ func TestQuery_Results(t *testing.T) {
 				return nil
 			})
 		}); err != nil {
-			t.Fatal(errors.Wrap(err, "unexpected error while iterating over tables"))
+			t.Fatalf("unexpected error while iterating over tables: %s", err)
 		}
 	}
 
@@ -84,7 +84,7 @@ func TestQuery_Results(t *testing.T) {
 	q.Done()
 
 	if q.Err() != nil {
-		t.Fatal(errors.Wrap(q.Err(), "unexpected error from query execution"))
+		t.Fatalf("unexpected error from query execution: %s", q.Err())
 	}
 }
 
@@ -93,7 +93,7 @@ func TestQuery_Stats(t *testing.T) {
 
 	q, err := runQuery(validScript)
 	if err != nil {
-		t.Fatal(errors.Wrap(err, "unexpected error while creating query"))
+		t.Fatalf("unexpected error while creating query: %s", err)
 	}
 
 	// consume results
@@ -103,7 +103,7 @@ func TestQuery_Stats(t *testing.T) {
 				return nil
 			})
 		}); err != nil {
-			t.Fatal(errors.Wrap(err, "unexpected error while iterating over tables"))
+			t.Fatalf("unexpected error while iterating over tables: %s", err)
 		}
 	}
 
@@ -147,7 +147,7 @@ csv.from(csv: data) |> map(fn: (r) => r.nonexistent)`
 
 	q, err := runQuery(invalidScript)
 	if err != nil {
-		t.Fatal(errors.Wrap(err, "unexpected error while creating query"))
+		t.Fatalf("unexpected error while creating query: %s", err)
 	}
 
 	// consume and check for error
@@ -163,6 +163,6 @@ csv.from(csv: data) |> map(fn: (r) => r.nonexistent)`
 	}
 
 	if q.Err() != nil {
-		t.Fatal(errors.Wrap(q.Err(), "unexpected error from query execution"))
+		t.Fatalf("unexpected error from query execution: %s", q.Err())
 	}
 }

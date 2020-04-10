@@ -1,9 +1,12 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 
+	"github.com/influxdata/flux"
 	_ "github.com/influxdata/flux/builtin"
+	"github.com/influxdata/flux/dependencies/filesystem"
 	"github.com/influxdata/flux/repl"
 	"github.com/spf13/cobra"
 )
@@ -22,14 +25,12 @@ func init() {
 }
 
 func execute(cmd *cobra.Command, args []string) error {
-	q, err := NewQuerier()
-	if err != nil {
-		return err
-	}
-	r := repl.New(q)
+	deps := flux.NewDefaultDependencies()
+	deps.Deps.FilesystemService = filesystem.SystemFS
+	ctx := deps.Inject(context.Background())
+	r := repl.New(ctx, deps, querier{})
 	if err := r.Input(args[0]); err != nil {
 		return fmt.Errorf("failed to execute query: %v", err)
 	}
-
 	return nil
 }

@@ -1,18 +1,20 @@
 package universe
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"regexp"
 	"sort"
 
 	"github.com/influxdata/flux"
+	"github.com/influxdata/flux/codes"
 	"github.com/influxdata/flux/execute"
+	"github.com/influxdata/flux/internal/errors"
 	"github.com/influxdata/flux/interpreter"
 	"github.com/influxdata/flux/plan"
 	"github.com/influxdata/flux/semantic"
 	"github.com/influxdata/flux/values"
-	"github.com/pkg/errors"
 )
 
 const HistogramKind = "histogram"
@@ -106,7 +108,7 @@ type HistogramProcedureSpec struct {
 func newHistogramProcedure(qs flux.OperationSpec, pa plan.Administration) (plan.ProcedureSpec, error) {
 	spec, ok := qs.(*HistogramOpSpec)
 	if !ok {
-		return nil, fmt.Errorf("invalid spec type %T", qs)
+		return nil, errors.Newf(codes.Internal, "invalid spec type %T", qs)
 	}
 
 	return &HistogramProcedureSpec{
@@ -130,7 +132,7 @@ func (s *HistogramProcedureSpec) Copy() plan.ProcedureSpec {
 func createHistogramTransformation(id execute.DatasetID, mode execute.AccumulationMode, spec plan.ProcedureSpec, a execute.Administration) (execute.Transformation, execute.Dataset, error) {
 	s, ok := spec.(*HistogramProcedureSpec)
 	if !ok {
-		return nil, nil, fmt.Errorf("invalid spec type %T", spec)
+		return nil, nil, errors.Newf(codes.Internal, "invalid spec type %T", spec)
 	}
 	cache := execute.NewTableBuilderCache(a.Allocator())
 	d := execute.NewDataset(id, mode, cache)
@@ -161,14 +163,14 @@ func (t *histogramTransformation) RetractTable(id execute.DatasetID, key flux.Gr
 func (t *histogramTransformation) Process(id execute.DatasetID, tbl flux.Table) error {
 	builder, created := t.cache.TableBuilder(tbl.Key())
 	if !created {
-		return fmt.Errorf("histogram found duplicate table with key: %v", tbl.Key())
+		return errors.Newf(codes.FailedPrecondition, "histogram found duplicate table with key: %v", tbl.Key())
 	}
 	valueIdx := execute.ColIdx(t.spec.Column, tbl.Cols())
 	if valueIdx < 0 {
-		return fmt.Errorf("column %q is missing", t.spec.Column)
+		return errors.Newf(codes.FailedPrecondition, "column %q is missing", t.spec.Column)
 	}
 	if col := tbl.Cols()[valueIdx]; col.Type != flux.TFloat {
-		return fmt.Errorf("column %q must be a float got %v", t.spec.Column, col.Type)
+		return errors.Newf(codes.FailedPrecondition, "column %q must be a float got %v", t.spec.Column, col.Type)
 	}
 
 	err := execute.AddTableKeyCols(tbl.Key(), builder)
@@ -276,6 +278,10 @@ func (b linearBins) Str() string {
 	panic(values.UnexpectedKind(semantic.String, semantic.Function))
 }
 
+func (b linearBins) Bytes() []byte {
+	panic(values.UnexpectedKind(semantic.Function, semantic.Bytes))
+}
+
 func (b linearBins) Int() int64 {
 	panic(values.UnexpectedKind(semantic.Int, semantic.Function))
 }
@@ -328,34 +334,34 @@ func (b linearBins) HasSideEffect() bool {
 	return false
 }
 
-func (b linearBins) Call(args values.Object) (values.Value, error) {
+func (b linearBins) Call(ctx context.Context, args values.Object) (values.Value, error) {
 	startV, ok := args.Get("start")
 	if !ok {
-		return nil, errors.New("start is required")
+		return nil, errors.New(codes.Invalid, "start is required")
 	}
 	if startV.Type() != semantic.Float {
-		return nil, errors.New("start must be a float")
+		return nil, errors.New(codes.Invalid, "start must be a float")
 	}
 	widthV, ok := args.Get("width")
 	if !ok {
-		return nil, errors.New("width is required")
+		return nil, errors.New(codes.Invalid, "width is required")
 	}
 	if widthV.Type() != semantic.Float {
-		return nil, errors.New("width must be a float")
+		return nil, errors.New(codes.Invalid, "width must be a float")
 	}
 	countV, ok := args.Get("count")
 	if !ok {
-		return nil, errors.New("count is required")
+		return nil, errors.New(codes.Invalid, "count is required")
 	}
 	if countV.Type() != semantic.Int {
-		return nil, errors.New("count must be an int")
+		return nil, errors.New(codes.Invalid, "count must be an int")
 	}
 	infV, ok := args.Get("infinity")
 	if !ok {
 		infV = values.NewBool(true)
 	}
 	if infV.Type() != semantic.Bool {
-		return nil, errors.New("infinity must be a bool")
+		return nil, errors.New(codes.Invalid, "infinity must be a bool")
 	}
 	start := startV.Float()
 	width := widthV.Float()
@@ -405,6 +411,10 @@ func (b logarithmicBins) IsNull() bool {
 }
 func (b logarithmicBins) Str() string {
 	panic(values.UnexpectedKind(semantic.String, semantic.Function))
+}
+
+func (b logarithmicBins) Bytes() []byte {
+	panic(values.UnexpectedKind(semantic.Function, semantic.Bytes))
 }
 
 func (b logarithmicBins) Int() int64 {
@@ -459,34 +469,34 @@ func (b logarithmicBins) HasSideEffect() bool {
 	return false
 }
 
-func (b logarithmicBins) Call(args values.Object) (values.Value, error) {
+func (b logarithmicBins) Call(ctx context.Context, args values.Object) (values.Value, error) {
 	startV, ok := args.Get("start")
 	if !ok {
-		return nil, errors.New("start is required")
+		return nil, errors.New(codes.Invalid, "start is required")
 	}
 	if startV.Type() != semantic.Float {
-		return nil, errors.New("start must be a float")
+		return nil, errors.New(codes.Invalid, "start must be a float")
 	}
 	factorV, ok := args.Get("factor")
 	if !ok {
-		return nil, errors.New("factor is required")
+		return nil, errors.New(codes.Invalid, "factor is required")
 	}
 	if factorV.Type() != semantic.Float {
-		return nil, errors.New("factor must be a float")
+		return nil, errors.New(codes.Invalid, "factor must be a float")
 	}
 	countV, ok := args.Get("count")
 	if !ok {
-		return nil, errors.New("count is required")
+		return nil, errors.New(codes.Invalid, "count is required")
 	}
 	if countV.Type() != semantic.Int {
-		return nil, errors.New("count must be an int")
+		return nil, errors.New(codes.Invalid, "count must be an int")
 	}
 	infV, ok := args.Get("infinity")
 	if !ok {
 		infV = values.NewBool(true)
 	}
 	if infV.Type() != semantic.Bool {
-		return nil, errors.New("infinity must be a bool")
+		return nil, errors.New(codes.Invalid, "infinity must be a bool")
 	}
 	start := startV.Float()
 	factor := factorV.Float()

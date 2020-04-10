@@ -1,22 +1,24 @@
 package universe
 
 import (
-	"fmt"
+	"context"
 	"sort"
 
 	"github.com/influxdata/flux"
+	"github.com/influxdata/flux/codes"
+	"github.com/influxdata/flux/compiler"
 	"github.com/influxdata/flux/execute"
+	"github.com/influxdata/flux/internal/errors"
 	"github.com/influxdata/flux/interpreter"
 	"github.com/influxdata/flux/plan"
 	"github.com/influxdata/flux/semantic"
 	"github.com/influxdata/flux/values"
-	"github.com/pkg/errors"
 )
 
 const ReduceKind = "reduce"
 
 type ReduceOpSpec struct {
-	Fn          *semantic.FunctionExpression `json:"fn"`
+	Fn          interpreter.ResolvedFunction `json:"fn"`
 	ReducerType semantic.Type                `json:"reducer_type"`
 	Identity    map[string]string            `json:"identity"`
 }
@@ -69,7 +71,7 @@ func createReduceOpSpec(args flux.Arguments, a *flux.Administration) (flux.Opera
 		o.Range(func(name string, v values.Value) {
 			stringer, ok := v.(values.ValueStringer)
 			if !ok {
-				haderr = errors.New("ne contains unencodable type")
+				haderr = errors.New(codes.FailedPrecondition, "ne contains unencodable type")
 				return
 			}
 			spec.Identity[name] = stringer.String()
@@ -92,7 +94,7 @@ func (s *ReduceOpSpec) Kind() flux.OperationKind {
 
 type ReduceProcedureSpec struct {
 	plan.DefaultCost
-	Fn          *semantic.FunctionExpression
+	Fn          interpreter.ResolvedFunction
 	ReducerType semantic.Type
 	Identity    map[string]string
 }
@@ -100,7 +102,7 @@ type ReduceProcedureSpec struct {
 func newReduceProcedure(qs flux.OperationSpec, pa plan.Administration) (plan.ProcedureSpec, error) {
 	spec, ok := qs.(*ReduceOpSpec)
 	if !ok {
-		return nil, fmt.Errorf("invalid spec type %T", qs)
+		return nil, errors.Newf(codes.Internal, "invalid spec type %T", qs)
 	}
 
 	return &ReduceProcedureSpec{
@@ -116,7 +118,7 @@ func (s *ReduceProcedureSpec) Kind() plan.ProcedureKind {
 func (s *ReduceProcedureSpec) Copy() plan.ProcedureSpec {
 	ns := new(ReduceProcedureSpec)
 	*ns = *s
-	ns.Fn = s.Fn.Copy().(*semantic.FunctionExpression)
+	ns.Fn = s.Fn.Copy()
 	ns.ReducerType = s.ReducerType
 	for k, v := range s.Identity {
 		ns.Identity[k] = v
@@ -127,11 +129,11 @@ func (s *ReduceProcedureSpec) Copy() plan.ProcedureSpec {
 func createReduceTransformation(id execute.DatasetID, mode execute.AccumulationMode, spec plan.ProcedureSpec, a execute.Administration) (execute.Transformation, execute.Dataset, error) {
 	s, ok := spec.(*ReduceProcedureSpec)
 	if !ok {
-		return nil, nil, fmt.Errorf("invalid spec type %T", spec)
+		return nil, nil, errors.Newf(codes.Internal, "invalid spec type %T", spec)
 	}
 	cache := execute.NewTableBuilderCache(a.Allocator())
 	d := execute.NewDataset(id, mode, cache)
-	t, err := NewReduceTransformation(d, cache, s)
+	t, err := NewReduceTransformation(a.Context(), s, d, cache)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -139,15 +141,15 @@ func createReduceTransformation(id execute.DatasetID, mode execute.AccumulationM
 }
 
 type reduceTransformation struct {
-	d     execute.Dataset
-	cache execute.TableBuilderCache
-
+	d              execute.Dataset
+	cache          execute.TableBuilderCache
+	ctx            context.Context
 	fn             *execute.RowReduceFn
 	neutralElement map[string]values.Value
 }
 
-func NewReduceTransformation(d execute.Dataset, cache execute.TableBuilderCache, spec *ReduceProcedureSpec) (*reduceTransformation, error) {
-	fn, err := execute.NewRowReduceFn(spec.Fn)
+func NewReduceTransformation(ctx context.Context, spec *ReduceProcedureSpec, d execute.Dataset, cache execute.TableBuilderCache) (*reduceTransformation, error) {
+	fn, err := execute.NewRowReduceFn(spec.Fn.Fn, compiler.ToScope(spec.Fn.Scope))
 	if err != nil {
 		return nil, err
 	}
@@ -164,6 +166,7 @@ func NewReduceTransformation(d execute.Dataset, cache execute.TableBuilderCache,
 	return &reduceTransformation{
 		d:              d,
 		cache:          cache,
+		ctx:            ctx,
 		fn:             fn,
 		neutralElement: ne,
 	}, nil
@@ -191,9 +194,9 @@ func (t *reduceTransformation) Process(id execute.DatasetID, tbl flux.Table) err
 		for i := 0; i < l; i++ {
 			// the RowReduce function type takes a row of values, and an accumulator value, and
 			// computes a new accumulator result.
-			m, err := t.fn.Eval(i, cr, map[string]values.Value{"accumulator": reducer})
+			m, err := t.fn.Eval(t.ctx, i, cr, map[string]values.Value{"accumulator": reducer})
 			if err != nil {
-				return errors.Wrap(err, "failed to evaluate reduce function")
+				return errors.Wrap(err, codes.Inherit, "failed to evaluate reduce function")
 			}
 			reducer = m
 		}
@@ -250,7 +253,7 @@ func (t *reduceTransformation) Process(id execute.DatasetID, tbl flux.Table) err
 					v = tbl.Key().Value(idx)
 				} else {
 					// This should be unreachable
-					return fmt.Errorf("could not find value for column %q", c.Label)
+					return errors.Newf(codes.Internal, "could not find value for column %q", c.Label)
 				}
 			}
 			if err := builder.AppendValue(j, v); err != nil {
@@ -258,7 +261,7 @@ func (t *reduceTransformation) Process(id execute.DatasetID, tbl flux.Table) err
 			}
 		}
 	} else {
-		return errors.New("two reducers writing result to the same table")
+		return errors.New(codes.FailedPrecondition, "two reducers writing result to the same table")
 	}
 	return nil
 }

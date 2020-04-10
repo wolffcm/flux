@@ -1,9 +1,11 @@
 package interpreter_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
+	"github.com/influxdata/flux/dependencies/dependenciestest"
 	"github.com/influxdata/flux/interpreter"
 	"github.com/influxdata/flux/interpreter/interptest"
 	"github.com/influxdata/flux/semantic"
@@ -82,8 +84,9 @@ func TestAccessNestedImport(t *testing.T) {
 	}
 
 	expectedError := fmt.Errorf(`cannot access imported package "a" of imported package "b"`)
+	ctx := dependenciestest.Default().Inject(context.Background())
+	_, err := interpreter.NewInterpreter(interpreter.NewPackage("")).Eval(ctx, node, values.NewScope(), &importer)
 
-	_, err := interpreter.NewInterpreter().Eval(node, interpreter.NewScope(), &importer)
 	if err == nil {
 		t.Errorf("expected error")
 	} else if err.Error() != expectedError.Error() {
@@ -316,7 +319,7 @@ func TestInterpreter_EvalPackage(t *testing.T) {
 			Required: nil,
 			Return:   semantic.Int,
 		}),
-		call: func(args values.Object) (values.Value, error) {
+		call: func(ctx context.Context, deps dependencies.Interface, args values.Object) (values.Value, error) {
 			return values.NewInt(0), nil
 		},
 		hasSideEffect: true,
@@ -334,13 +337,13 @@ func TestInterpreter_EvalPackage(t *testing.T) {
 					path = k
 					pkg = v
 				}
-				itrp := interpreter.NewInterpreter()
+				itrp := interpreter.NewInterpreter(context.Background(), executetest.Default())
 				if _, err := interptest.Eval(itrp, scope, importer, pkg); err != nil {
 					t.Fatal(err)
 				}
 				importer.packages[path] = itrp.Package()
 			}
-			itrp := interpreter.NewInterpreter()
+			itrp := interpreter.NewInterpreter(context.Background(), executetest.Default())
 			if err := interptest.Eval(itrp, scope, importer, tc.pkg); err != nil {
 				t.Fatal(err)
 			}
@@ -357,32 +360,57 @@ func TestInterpreter_EvalPackage(t *testing.T) {
 }
 */
 
-func TestInterpreter_QualifiedOption(t *testing.T) {
-	externalPackage := interpreter.NewPackageWithValues("alert",
-		values.NewObjectWithValues(
-			map[string]values.Value{
-				"state": values.NewString("Warning"),
-			}))
+func TestInterpreter_SetNewOption(t *testing.T) {
+	pkg := interpreter.NewPackage("alert")
+	ctx := dependenciestest.Default().Inject(context.Background())
+	itrp := interpreter.NewInterpreter(pkg)
+	script := `
+		package alert
+		option state = "Warning"
+		state
+`
+	if _, err := interptest.Eval(ctx, itrp, values.NewNestedScope(nil, pkg), nil, script); err != nil {
+		t.Fatalf("failed to evaluate package: %v", err)
+	}
+	option, ok := pkg.Get("state")
+	if !ok {
+		t.Errorf("missing option %q in package %s", "state", "alert")
+	}
+	if got, want := option.Type().Nature(), semantic.String; want != got {
+		t.Fatalf("unexpected option type; want=%s got=%s value: %v", want, got, option)
+	}
+	if got, want := option.Str(), "Warning"; want != got {
+		t.Errorf("unexpected option value; want=%s got=%s", want, got)
+	}
+}
+
+func TestInterpreter_SetQualifiedOption(t *testing.T) {
+	externalPackage := interpreter.NewPackage("alert")
+	externalPackage.SetOption("state", values.NewString("Warning"))
 	importer := &importer{
 		packages: map[string]*interpreter.Package{
 			"alert": externalPackage,
 		},
 	}
-	itrp := interpreter.NewInterpreter()
+	ctx := dependenciestest.Default().Inject(context.Background())
+	itrp := interpreter.NewInterpreter(interpreter.NewPackage(""))
 	pkg := `
 		package foo
 		import "alert"
 		option alert.state = "Error"
+		alert.state
 `
-	if _, err := interptest.Eval(itrp, interpreter.NewScope(), importer, pkg); err != nil {
+	if _, err := interptest.Eval(ctx, itrp, values.NewScope(), importer, pkg); err != nil {
 		t.Fatalf("failed to evaluate package: %v", err)
 	}
 	option, ok := externalPackage.Get("state")
 	if !ok {
 		t.Errorf("missing option %q in package %s", "state", "alert")
 	}
-	optionValue := option.Str()
-	if option.Str() != "Error" {
-		t.Errorf("unexpected option value; want=%s got=%s", "Error", optionValue)
+	if got, want := option.Type().Nature(), semantic.String; want != got {
+		t.Fatalf("unexpected option type; want=%s got=%s value: %v", want, got, option)
+	}
+	if got, want := option.Str(), "Error"; want != got {
+		t.Errorf("unexpected option value; want=%s got=%s", want, got)
 	}
 }

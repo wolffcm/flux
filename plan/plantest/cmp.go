@@ -11,7 +11,7 @@ import (
 	"github.com/influxdata/flux/semantic/semantictest"
 	"github.com/influxdata/flux/stdlib/kafka"
 	"github.com/influxdata/flux/stdlib/universe"
-	"github.com/pkg/errors"
+	"github.com/influxdata/flux/values/valuestest"
 )
 
 // CmpOptions are the options needed to compare plan.ProcedureSpecs inside plan.Spec.
@@ -23,6 +23,7 @@ var CmpOptions = append(
 	cmpopts.IgnoreUnexported(universe.JoinOpSpec{}),
 	cmp.AllowUnexported(kafka.ToKafkaProcedureSpec{}),
 	cmpopts.IgnoreUnexported(kafka.ToKafkaProcedureSpec{}),
+	valuestest.ScopeComparer,
 )
 
 // ComparePlans compares two query plans using an arbitrary comparator function f
@@ -71,7 +72,7 @@ func ComparePlansShallow(p, q *plan.Spec) error {
 func compareMetadata(p, q *plan.Spec) error {
 	opts := cmpopts.IgnoreFields(plan.Spec{}, "Roots")
 	if diff := cmp.Diff(p, q, opts); diff != "" {
-		return errors.Errorf("plan metadata not equal; -want/+got:\n%v", diff)
+		return fmt.Errorf("plan metadata not equal; -want/+got:\n%v", diff)
 	}
 	return nil
 }

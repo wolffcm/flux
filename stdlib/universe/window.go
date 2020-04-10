@@ -1,15 +1,15 @@
 package universe
 
 import (
-	"fmt"
 	"math"
 
 	"github.com/influxdata/flux"
+	"github.com/influxdata/flux/codes"
 	"github.com/influxdata/flux/execute"
+	"github.com/influxdata/flux/internal/errors"
 	"github.com/influxdata/flux/plan"
 	"github.com/influxdata/flux/semantic"
 	"github.com/influxdata/flux/values"
-	"github.com/pkg/errors"
 )
 
 const WindowKind = "window"
@@ -24,7 +24,7 @@ type WindowOpSpec struct {
 	CreateEmpty bool          `json:"createEmpty"`
 }
 
-var infinityVar = values.NewDuration(math.MaxInt64)
+var infinityVar = values.NewDuration(values.ConvertDuration(math.MaxInt64))
 
 func init() {
 	windowSignature := flux.FunctionSignature(
@@ -59,7 +59,7 @@ func createWindowOpSpec(args flux.Arguments, a *flux.Administration) (flux.Opera
 		return nil, err
 	}
 	if everySet {
-		spec.Every = flux.Duration(every)
+		spec.Every = every
 	}
 	period, periodSet, err := args.GetDuration("period")
 	if err != nil {
@@ -75,7 +75,7 @@ func createWindowOpSpec(args flux.Arguments, a *flux.Administration) (flux.Opera
 	}
 
 	if !everySet && !periodSet {
-		return nil, errors.New(`window function requires at least one of "every" or "period" to be set`)
+		return nil, errors.New(codes.Invalid, `window function requires at least one of "every" or "period" to be set`)
 	}
 
 	if label, ok, err := args.GetString("timeColumn"); err != nil {
@@ -137,7 +137,7 @@ type WindowProcedureSpec struct {
 func newWindowProcedure(qs flux.OperationSpec, pa plan.Administration) (plan.ProcedureSpec, error) {
 	s, ok := qs.(*WindowOpSpec)
 	if !ok {
-		return nil, fmt.Errorf("invalid spec type %T", qs)
+		return nil, errors.Newf(codes.Internal, "invalid spec type %T", qs)
 	}
 	p := &WindowProcedureSpec{
 		Window: plan.WindowSpec{
@@ -165,24 +165,29 @@ func (s *WindowProcedureSpec) Copy() plan.ProcedureSpec {
 func createWindowTransformation(id execute.DatasetID, mode execute.AccumulationMode, spec plan.ProcedureSpec, a execute.Administration) (execute.Transformation, execute.Dataset, error) {
 	s, ok := spec.(*WindowProcedureSpec)
 	if !ok {
-		return nil, nil, fmt.Errorf("invalid spec type %T", spec)
+		return nil, nil, errors.Newf(codes.Internal, "invalid spec type %T", spec)
 	}
 	cache := execute.NewTableBuilderCache(a.Allocator())
 	d := execute.NewDataset(id, mode, cache)
 
 	bounds := a.StreamContext().Bounds()
 	if bounds == nil {
-		return nil, nil, errors.New("nil bounds passed to window")
+		return nil, nil, errors.New(codes.Invalid, "nil bounds passed to window")
 	}
 
+	w, err := execute.NewWindow(
+		s.Window.Every,
+		s.Window.Period,
+		s.Window.Offset,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
 	t := NewFixedWindowTransformation(
 		d,
 		cache,
 		*bounds,
-		execute.NewWindow(
-			execute.Duration(s.Window.Every),
-			execute.Duration(s.Window.Period),
-			execute.Duration(s.Window.Offset)),
+		w,
 		s.TimeColumn,
 		s.StartColumn,
 		s.StopColumn,
@@ -239,7 +244,7 @@ func (t *fixedWindowTransformation) RetractTable(id execute.DatasetID, key flux.
 func (t *fixedWindowTransformation) Process(id execute.DatasetID, tbl flux.Table) error {
 	timeIdx := execute.ColIdx(t.timeCol, tbl.Cols())
 	if timeIdx < 0 {
-		return fmt.Errorf("missing time column %q", t.timeCol)
+		return errors.Newf(codes.FailedPrecondition, "missing time column %q", t.timeCol)
 	}
 
 	newCols := make([]flux.ColMeta, 0, len(tbl.Cols())+2)

@@ -1,19 +1,23 @@
 package universe_test
 
 import (
+	"context"
+	"errors"
 	"regexp"
 	"testing"
 
 	"github.com/influxdata/flux"
 	"github.com/influxdata/flux/ast"
+	"github.com/influxdata/flux/dependencies/dependenciestest"
 	"github.com/influxdata/flux/execute"
 	"github.com/influxdata/flux/execute/executetest"
+	"github.com/influxdata/flux/interpreter"
 	"github.com/influxdata/flux/plan"
 	"github.com/influxdata/flux/querytest"
 	"github.com/influxdata/flux/semantic"
 	"github.com/influxdata/flux/stdlib/influxdata/influxdb"
 	"github.com/influxdata/flux/stdlib/universe"
-	"github.com/pkg/errors"
+	"github.com/influxdata/flux/values/valuestest"
 )
 
 func TestSchemaMutions_NewQueries(t *testing.T) {
@@ -155,21 +159,24 @@ func TestSchemaMutions_NewQueries(t *testing.T) {
 					{
 						ID: "drop1",
 						Spec: &universe.DropOpSpec{
-							Predicate: &semantic.FunctionExpression{
-								Block: &semantic.FunctionBlock{
-									Parameters: &semantic.FunctionParameters{
-										List: []*semantic.FunctionParameter{{Key: &semantic.Identifier{Name: "column"}}},
-									},
-									Body: &semantic.BinaryExpression{
-										Operator: ast.RegexpMatchOperator,
-										Left: &semantic.IdentifierExpression{
-											Name: "column",
+							Predicate: interpreter.ResolvedFunction{
+								Fn: &semantic.FunctionExpression{
+									Block: &semantic.FunctionBlock{
+										Parameters: &semantic.FunctionParameters{
+											List: []*semantic.FunctionParameter{{Key: &semantic.Identifier{Name: "column"}}},
 										},
-										Right: &semantic.RegexpLiteral{
-											Value: regexp.MustCompile(`reg*`),
+										Body: &semantic.BinaryExpression{
+											Operator: ast.RegexpMatchOperator,
+											Left: &semantic.IdentifierExpression{
+												Name: "column",
+											},
+											Right: &semantic.RegexpLiteral{
+												Value: regexp.MustCompile(`reg*`),
+											},
 										},
 									},
 								},
+								Scope: valuestest.NowScope(),
 							},
 						},
 					},
@@ -200,21 +207,24 @@ func TestSchemaMutions_NewQueries(t *testing.T) {
 					{
 						ID: "keep1",
 						Spec: &universe.KeepOpSpec{
-							Predicate: &semantic.FunctionExpression{
-								Block: &semantic.FunctionBlock{
-									Parameters: &semantic.FunctionParameters{
-										List: []*semantic.FunctionParameter{{Key: &semantic.Identifier{Name: "column"}}},
-									},
-									Body: &semantic.BinaryExpression{
-										Operator: ast.RegexpMatchOperator,
-										Left: &semantic.IdentifierExpression{
-											Name: "column",
+							Predicate: interpreter.ResolvedFunction{
+								Fn: &semantic.FunctionExpression{
+									Block: &semantic.FunctionBlock{
+										Parameters: &semantic.FunctionParameters{
+											List: []*semantic.FunctionParameter{{Key: &semantic.Identifier{Name: "column"}}},
 										},
-										Right: &semantic.RegexpLiteral{
-											Value: regexp.MustCompile(`reg*`),
+										Body: &semantic.BinaryExpression{
+											Operator: ast.RegexpMatchOperator,
+											Left: &semantic.IdentifierExpression{
+												Name: "column",
+											},
+											Right: &semantic.RegexpLiteral{
+												Value: regexp.MustCompile(`reg*`),
+											},
 										},
 									},
 								},
+								Scope: valuestest.NowScope(),
 							},
 						},
 					},
@@ -245,15 +255,18 @@ func TestSchemaMutions_NewQueries(t *testing.T) {
 					{
 						ID: "rename1",
 						Spec: &universe.RenameOpSpec{
-							Fn: &semantic.FunctionExpression{
-								Block: &semantic.FunctionBlock{
-									Parameters: &semantic.FunctionParameters{
-										List: []*semantic.FunctionParameter{{Key: &semantic.Identifier{Name: "column"}}},
-									},
-									Body: &semantic.StringLiteral{
-										Value: "new_name",
+							Fn: interpreter.ResolvedFunction{
+								Fn: &semantic.FunctionExpression{
+									Block: &semantic.FunctionBlock{
+										Parameters: &semantic.FunctionParameters{
+											List: []*semantic.FunctionParameter{{Key: &semantic.Identifier{Name: "column"}}},
+										},
+										Body: &semantic.StringLiteral{
+											Value: "new_name",
+										},
 									},
 								},
+								Scope: valuestest.NowScope(),
 							},
 						},
 					},
@@ -385,6 +398,162 @@ func TestDropRenameKeep_Process(t *testing.T) {
 			}},
 		},
 		{
+			name: "drop key col merge tables",
+			spec: &universe.SchemaMutationProcedureSpec{
+				Mutations: []universe.SchemaMutation{
+					&universe.DropOpSpec{
+						Columns: []string{"b"},
+					},
+				},
+			},
+			data: []flux.Table{
+				&executetest.Table{
+					ColMeta: []flux.ColMeta{
+						{Label: "a", Type: flux.TString},
+						{Label: "b", Type: flux.TString},
+						{Label: "c", Type: flux.TFloat},
+					},
+					KeyCols: []string{"a", "b"},
+					Data: [][]interface{}{
+						{"one", "two", 3.0},
+						{"one", "two", 13.0},
+					},
+				},
+				&executetest.Table{
+					ColMeta: []flux.ColMeta{
+						{Label: "a", Type: flux.TString},
+						{Label: "b", Type: flux.TString},
+						{Label: "c", Type: flux.TFloat},
+					},
+					KeyCols: []string{"a", "b"},
+					Data: [][]interface{}{
+						{"one", "three", 5.0},
+						{"one", "three", 15.0},
+					},
+				},
+			},
+			want: []*executetest.Table{{
+				ColMeta: []flux.ColMeta{
+					{Label: "a", Type: flux.TString},
+					{Label: "c", Type: flux.TFloat},
+				},
+				KeyCols: []string{"a"},
+				Data: [][]interface{}{
+					{"one", 3.0},
+					{"one", 13.0},
+					{"one", 5.0},
+					{"one", 15.0},
+				},
+			}},
+		},
+		{
+			name: "drop key col merge error column count",
+			spec: &universe.SchemaMutationProcedureSpec{
+				Mutations: []universe.SchemaMutation{
+					&universe.DropOpSpec{
+						Columns: []string{"b"},
+					},
+				},
+			},
+			data: []flux.Table{
+				&executetest.Table{
+					ColMeta: []flux.ColMeta{
+						{Label: "a", Type: flux.TString},
+						{Label: "b", Type: flux.TString},
+						{Label: "c", Type: flux.TFloat},
+					},
+					KeyCols: []string{"a", "b"},
+					Data: [][]interface{}{
+						{"one", "two", 3.0},
+						{"one", "two", 13.0},
+					},
+				},
+				&executetest.Table{
+					ColMeta: []flux.ColMeta{
+						{Label: "a", Type: flux.TString},
+						{Label: "b", Type: flux.TString},
+					},
+					KeyCols: []string{"a", "b"},
+					Data: [][]interface{}{
+						{"one", "three"},
+						{"one", "three"},
+					},
+				},
+			},
+			wantErr: errors.New("requested operation merges tables with different numbers of columns for group key {a=one}"),
+		},
+		{
+			name: "drop key col merge error column type",
+			spec: &universe.SchemaMutationProcedureSpec{
+				Mutations: []universe.SchemaMutation{
+					&universe.DropOpSpec{
+						Columns: []string{"b"},
+					},
+				},
+			},
+			data: []flux.Table{
+				&executetest.Table{
+					ColMeta: []flux.ColMeta{
+						{Label: "a", Type: flux.TString},
+						{Label: "b", Type: flux.TString},
+						{Label: "c", Type: flux.TFloat},
+					},
+					KeyCols: []string{"a", "b"},
+					Data: [][]interface{}{
+						{"one", "two", 3.0},
+						{"one", "two", 13.0},
+					},
+				},
+				&executetest.Table{
+					ColMeta: []flux.ColMeta{
+						{Label: "a", Type: flux.TString},
+						{Label: "b", Type: flux.TString},
+						{Label: "c", Type: flux.TString},
+					},
+					KeyCols: []string{"a", "b"},
+					Data: [][]interface{}{
+						{"one", "three", "val"},
+						{"one", "three", "val"},
+					},
+				},
+			},
+			wantErr: errors.New("requested operation merges tables with different schemas for group key {a=one}"),
+		},
+		{
+			name: "drop no exist",
+			spec: &universe.SchemaMutationProcedureSpec{
+				Mutations: []universe.SchemaMutation{
+					&universe.DropOpSpec{
+						Columns: []string{"boo"},
+					},
+				},
+			},
+			data: []flux.Table{&executetest.Table{
+				ColMeta: []flux.ColMeta{
+					{Label: "a", Type: flux.TString},
+					{Label: "b", Type: flux.TString},
+					{Label: "c", Type: flux.TFloat},
+				},
+				KeyCols: []string{"a", "b"},
+				Data: [][]interface{}{
+					{"one", "two", 3.0},
+					{"one", "two", 13.0},
+				},
+			}},
+			want: []*executetest.Table{{
+				ColMeta: []flux.ColMeta{
+					{Label: "a", Type: flux.TString},
+					{Label: "b", Type: flux.TString},
+					{Label: "c", Type: flux.TFloat},
+				},
+				KeyCols: []string{"a", "b"},
+				Data: [][]interface{}{
+					{"one", "two", 3.0},
+					{"one", "two", 13.0},
+				},
+			}},
+		},
+		{
 			name: "keep multiple cols",
 			spec: &universe.SchemaMutationProcedureSpec{
 				Mutations: []universe.SchemaMutation{
@@ -415,6 +584,128 @@ func TestDropRenameKeep_Process(t *testing.T) {
 					{21.0},
 				},
 			}},
+		},
+		{
+			name: "keep one key col merge tables",
+			spec: &universe.SchemaMutationProcedureSpec{
+				Mutations: []universe.SchemaMutation{
+					&universe.KeepOpSpec{
+						Columns: []string{"a", "c"},
+					},
+				},
+			},
+			data: []flux.Table{
+				&executetest.Table{
+					ColMeta: []flux.ColMeta{
+						{Label: "a", Type: flux.TString},
+						{Label: "b", Type: flux.TString},
+						{Label: "c", Type: flux.TFloat},
+					},
+					KeyCols: []string{"a", "b"},
+					Data: [][]interface{}{
+						{"one", "two", 3.0},
+						{"one", "two", 13.0},
+					},
+				},
+				&executetest.Table{
+					ColMeta: []flux.ColMeta{
+						{Label: "a", Type: flux.TString},
+						{Label: "b", Type: flux.TString},
+						{Label: "c", Type: flux.TFloat},
+					},
+					KeyCols: []string{"a", "b"},
+					Data: [][]interface{}{
+						{"one", "three", 5.0},
+						{"one", "three", 15.0},
+					},
+				},
+			},
+			want: []*executetest.Table{{
+				ColMeta: []flux.ColMeta{
+					{Label: "a", Type: flux.TString},
+					{Label: "c", Type: flux.TFloat},
+				},
+				KeyCols: []string{"a"},
+				Data: [][]interface{}{
+					{"one", 3.0},
+					{"one", 13.0},
+					{"one", 5.0},
+					{"one", 15.0},
+				},
+			}},
+		},
+		{
+			name: "keep one key col merge error column count",
+			spec: &universe.SchemaMutationProcedureSpec{
+				Mutations: []universe.SchemaMutation{
+					&universe.KeepOpSpec{
+						Columns: []string{"a", "c"},
+					},
+				},
+			},
+			data: []flux.Table{
+				&executetest.Table{
+					ColMeta: []flux.ColMeta{
+						{Label: "a", Type: flux.TString},
+						{Label: "b", Type: flux.TString},
+						{Label: "c", Type: flux.TFloat},
+					},
+					KeyCols: []string{"a", "b"},
+					Data: [][]interface{}{
+						{"one", "two", 3.0},
+						{"one", "two", 13.0},
+					},
+				},
+				&executetest.Table{
+					ColMeta: []flux.ColMeta{
+						{Label: "a", Type: flux.TString},
+						{Label: "b", Type: flux.TString},
+					},
+					KeyCols: []string{"a", "b"},
+					Data: [][]interface{}{
+						{"one", "three"},
+						{"one", "three"},
+					},
+				},
+			},
+			wantErr: errors.New("requested operation merges tables with different numbers of columns for group key {a=one}"),
+		},
+		{
+			name: "keep one key col merge error column type",
+			spec: &universe.SchemaMutationProcedureSpec{
+				Mutations: []universe.SchemaMutation{
+					&universe.KeepOpSpec{
+						Columns: []string{"a", "c"},
+					},
+				},
+			},
+			data: []flux.Table{
+				&executetest.Table{
+					ColMeta: []flux.ColMeta{
+						{Label: "a", Type: flux.TString},
+						{Label: "b", Type: flux.TString},
+						{Label: "c", Type: flux.TFloat},
+					},
+					KeyCols: []string{"a", "b"},
+					Data: [][]interface{}{
+						{"one", "two", 3.0},
+						{"one", "two", 13.0},
+					},
+				},
+				&executetest.Table{
+					ColMeta: []flux.ColMeta{
+						{Label: "a", Type: flux.TString},
+						{Label: "b", Type: flux.TString},
+						{Label: "c", Type: flux.TString},
+					},
+					KeyCols: []string{"a", "b"},
+					Data: [][]interface{}{
+						{"one", "three", "foo"},
+						{"one", "three", "bar"},
+					},
+				},
+			},
+			wantErr: errors.New("requested operation merges tables with different schemas for group key {a=one}"),
 		},
 		{
 			name: "duplicate single col",
@@ -457,15 +748,18 @@ func TestDropRenameKeep_Process(t *testing.T) {
 			spec: &universe.SchemaMutationProcedureSpec{
 				Mutations: []universe.SchemaMutation{
 					&universe.RenameOpSpec{
-						Fn: &semantic.FunctionExpression{
-							Block: &semantic.FunctionBlock{
-								Parameters: &semantic.FunctionParameters{
-									List: []*semantic.FunctionParameter{{Key: &semantic.Identifier{Name: "column"}}},
-								},
-								Body: &semantic.StringLiteral{
-									Value: "new_name",
+						Fn: interpreter.ResolvedFunction{
+							Fn: &semantic.FunctionExpression{
+								Block: &semantic.FunctionBlock{
+									Parameters: &semantic.FunctionParameters{
+										List: []*semantic.FunctionParameter{{Key: &semantic.Identifier{Name: "column"}}},
+									},
+									Body: &semantic.StringLiteral{
+										Value: "new_name",
+									},
 								},
 							},
+							Scope: valuestest.NowScope(),
 						},
 					},
 				},
@@ -489,21 +783,24 @@ func TestDropRenameKeep_Process(t *testing.T) {
 			spec: &universe.SchemaMutationProcedureSpec{
 				Mutations: []universe.SchemaMutation{
 					&universe.DropOpSpec{
-						Predicate: &semantic.FunctionExpression{
-							Block: &semantic.FunctionBlock{
-								Parameters: &semantic.FunctionParameters{
-									List: []*semantic.FunctionParameter{{Key: &semantic.Identifier{Name: "column"}}},
-								},
-								Body: &semantic.BinaryExpression{
-									Operator: ast.RegexpMatchOperator,
-									Left: &semantic.IdentifierExpression{
-										Name: "column",
+						Predicate: interpreter.ResolvedFunction{
+							Fn: &semantic.FunctionExpression{
+								Block: &semantic.FunctionBlock{
+									Parameters: &semantic.FunctionParameters{
+										List: []*semantic.FunctionParameter{{Key: &semantic.Identifier{Name: "column"}}},
 									},
-									Right: &semantic.RegexpLiteral{
-										Value: regexp.MustCompile(`server*`),
+									Body: &semantic.BinaryExpression{
+										Operator: ast.RegexpMatchOperator,
+										Left: &semantic.IdentifierExpression{
+											Name: "column",
+										},
+										Right: &semantic.RegexpLiteral{
+											Value: regexp.MustCompile(`server*`),
+										},
 									},
 								},
 							},
+							Scope: valuestest.NowScope(),
 						},
 					},
 				},
@@ -536,21 +833,24 @@ func TestDropRenameKeep_Process(t *testing.T) {
 			spec: &universe.SchemaMutationProcedureSpec{
 				Mutations: []universe.SchemaMutation{
 					&universe.KeepOpSpec{
-						Predicate: &semantic.FunctionExpression{
-							Block: &semantic.FunctionBlock{
-								Parameters: &semantic.FunctionParameters{
-									List: []*semantic.FunctionParameter{{Key: &semantic.Identifier{Name: "column"}}},
-								},
-								Body: &semantic.BinaryExpression{
-									Operator: ast.RegexpMatchOperator,
-									Left: &semantic.IdentifierExpression{
-										Name: "column",
+						Predicate: interpreter.ResolvedFunction{
+							Fn: &semantic.FunctionExpression{
+								Block: &semantic.FunctionBlock{
+									Parameters: &semantic.FunctionParameters{
+										List: []*semantic.FunctionParameter{{Key: &semantic.Identifier{Name: "column"}}},
 									},
-									Right: &semantic.RegexpLiteral{
-										Value: regexp.MustCompile(`server*`),
+									Body: &semantic.BinaryExpression{
+										Operator: ast.RegexpMatchOperator,
+										Left: &semantic.IdentifierExpression{
+											Name: "column",
+										},
+										Right: &semantic.RegexpLiteral{
+											Value: regexp.MustCompile(`server*`),
+										},
 									},
 								},
 							},
+							Scope: valuestest.NowScope(),
 						},
 					},
 				},
@@ -697,8 +997,44 @@ func TestDropRenameKeep_Process(t *testing.T) {
 					{21.0, 22.0, 23.0},
 				},
 			}},
-			want:    []*executetest.Table(nil),
-			wantErr: errors.New(`keep error: column "no_exist" doesn't exist`),
+			want: []*executetest.Table{{
+				ColMeta: []flux.ColMeta(nil),
+				Data:    [][]interface{}(nil),
+			}},
+		},
+		{
+			name: "keep no exist along with all other columns",
+			spec: &universe.SchemaMutationProcedureSpec{
+				Mutations: []universe.SchemaMutation{
+					&universe.KeepOpSpec{
+						Columns: []string{"no_exist", "server1", "local", "server2"},
+					},
+				},
+			},
+			data: []flux.Table{&executetest.Table{
+				ColMeta: []flux.ColMeta{
+					{Label: "server1", Type: flux.TFloat},
+					{Label: "local", Type: flux.TFloat},
+					{Label: "server2", Type: flux.TFloat},
+				},
+				Data: [][]interface{}{
+					{1.0, 2.0, 3.0},
+					{11.0, 12.0, 13.0},
+					{21.0, 22.0, 23.0},
+				},
+			}},
+			want: []*executetest.Table{{
+				ColMeta: []flux.ColMeta{
+					{Label: "server1", Type: flux.TFloat},
+					{Label: "local", Type: flux.TFloat},
+					{Label: "server2", Type: flux.TFloat},
+				},
+				Data: [][]interface{}{
+					{1.0, 2.0, 3.0},
+					{11.0, 12.0, 13.0},
+					{21.0, 22.0, 23.0},
+				},
+			}},
 		},
 		{
 			name: "duplicate no exist",
@@ -1225,7 +1561,8 @@ func TestDropRenameKeep_Process(t *testing.T) {
 				tc.want,
 				tc.wantErr,
 				func(d execute.Dataset, c execute.TableBuilderCache) execute.Transformation {
-					tr, err := universe.NewSchemaMutationTransformation(d, c, tc.spec)
+					ctx := dependenciestest.Default().Inject(context.Background())
+					tr, err := universe.NewSchemaMutationTransformation(ctx, tc.spec, d, c)
 					if err != nil {
 						t.Fatal(err)
 					}

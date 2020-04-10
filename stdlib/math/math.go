@@ -1,13 +1,15 @@
 package math
 
 import (
+	"context"
 	"fmt"
 	"math"
 
 	"github.com/influxdata/flux"
+	"github.com/influxdata/flux/codes"
+	"github.com/influxdata/flux/internal/errors"
 	"github.com/influxdata/flux/semantic"
 	"github.com/influxdata/flux/values"
-	"github.com/pkg/errors"
 )
 
 var SpecialFns map[string]values.Function
@@ -20,10 +22,10 @@ func generateMathFunctionX(name string, mathFn func(float64) float64) values.Fun
 			Required:   semantic.LabelSet{"x"},
 			Return:     semantic.Float,
 		}),
-		func(args values.Object) (values.Value, error) {
+		func(ctx context.Context, args values.Object) (values.Value, error) {
 			v, ok := args.Get("x")
 			if !ok {
-				return nil, errors.New("missing argument x")
+				return nil, errors.New(codes.Invalid, "missing argument x")
 			}
 
 			if v.Type().Nature() == semantic.Float {
@@ -46,7 +48,7 @@ func generateMathFunctionXY(name string, mathFn func(float64, float64) float64, 
 			Required:   argNames,
 			Return:     semantic.Float,
 		}),
-		func(args values.Object) (values.Value, error) {
+		func(ctx context.Context, args values.Object) (values.Value, error) {
 			v1, ok := args.Get(argNames[0])
 			if !ok {
 				return nil, fmt.Errorf("missing argument %s", argNames[0])
@@ -146,10 +148,10 @@ func init() {
 				Required:   semantic.LabelSet{"f"},
 				Return:     semantic.UInt,
 			}),
-			func(args values.Object) (values.Value, error) {
+			func(ctx context.Context, args values.Object) (values.Value, error) {
 				v1, ok := args.Get("f")
 				if !ok {
-					return nil, errors.New("missing argument f")
+					return nil, errors.New(codes.Invalid, "missing argument f")
 				}
 
 				if v1.Type().Nature() == semantic.Float {
@@ -165,10 +167,10 @@ func init() {
 				Required:   semantic.LabelSet{"b"},
 				Return:     semantic.Float,
 			}),
-			func(args values.Object) (values.Value, error) {
+			func(ctx context.Context, args values.Object) (values.Value, error) {
 				v1, ok := args.Get("b")
 				if !ok {
-					return nil, errors.New("missing argument b")
+					return nil, errors.New(codes.Invalid, "missing argument b")
 				}
 
 				if v1.Type().Nature() == semantic.UInt {
@@ -185,10 +187,10 @@ func init() {
 				Required:   semantic.LabelSet{"x"},
 				Return:     semantic.Int,
 			}),
-			func(args values.Object) (values.Value, error) {
+			func(ctx context.Context, args values.Object) (values.Value, error) {
 				v1, ok := args.Get("x")
 				if !ok {
-					return nil, errors.New("missing argument x")
+					return nil, errors.New(codes.Invalid, "missing argument x")
 				}
 
 				if v1.Type().Nature() == semantic.Float {
@@ -205,10 +207,10 @@ func init() {
 				Required:   semantic.LabelSet{"f"},
 				Return:     semantic.NewObjectPolyType(map[string]semantic.PolyType{"frac": semantic.Float, "exp": semantic.Int}, semantic.LabelSet{"frac", "exp"}, nil),
 			}),
-			func(args values.Object) (values.Value, error) {
+			func(ctx context.Context, args values.Object) (values.Value, error) {
 				v1, ok := args.Get("f")
 				if !ok {
-					return nil, errors.New("missing argument f")
+					return nil, errors.New(codes.Invalid, "missing argument f")
 				}
 
 				if v1.Type().Nature() == semantic.Float {
@@ -226,10 +228,10 @@ func init() {
 				Required:   semantic.LabelSet{"x"},
 				Return:     semantic.NewObjectPolyType(map[string]semantic.PolyType{"lgamma": semantic.Float, "sign": semantic.Int}, semantic.LabelSet{"lgamma", "sign"}, nil),
 			}),
-			func(args values.Object) (values.Value, error) {
+			func(ctx context.Context, args values.Object) (values.Value, error) {
 				v1, ok := args.Get("x")
 				if !ok {
-					return nil, errors.New("missing argument x")
+					return nil, errors.New(codes.Invalid, "missing argument x")
 				}
 
 				if v1.Type().Nature() == semantic.Float {
@@ -247,10 +249,10 @@ func init() {
 				Required:   semantic.LabelSet{"f"},
 				Return:     semantic.NewObjectPolyType(map[string]semantic.PolyType{"int": semantic.Float, "frac": semantic.Float}, semantic.LabelSet{"int", "frac"}, nil),
 			}),
-			func(args values.Object) (values.Value, error) {
+			func(ctx context.Context, args values.Object) (values.Value, error) {
 				v1, ok := args.Get("f")
 				if !ok {
-					return nil, errors.New("missing argument f")
+					return nil, errors.New(codes.Invalid, "missing argument f")
 				}
 
 				if v1.Type().Nature() == semantic.Float {
@@ -268,10 +270,10 @@ func init() {
 				Required:   semantic.LabelSet{"x"},
 				Return:     semantic.NewObjectPolyType(map[string]semantic.PolyType{"sin": semantic.Float, "cos": semantic.Float}, semantic.LabelSet{"sin", "cos"}, nil),
 			}),
-			func(args values.Object) (values.Value, error) {
+			func(ctx context.Context, args values.Object) (values.Value, error) {
 				v1, ok := args.Get("x")
 				if !ok {
-					return nil, errors.New("missing argument x")
+					return nil, errors.New(codes.Invalid, "missing argument x")
 				}
 
 				if v1.Type().Nature() == semantic.Float {
@@ -289,14 +291,14 @@ func init() {
 				Required:   semantic.LabelSet{"f", "sign"},
 				Return:     semantic.Bool,
 			}),
-			func(args values.Object) (values.Value, error) {
+			func(ctx context.Context, args values.Object) (values.Value, error) {
 				v1, ok := args.Get("f")
 				if !ok {
-					return nil, errors.New("missing argument f")
+					return nil, errors.New(codes.Invalid, "missing argument f")
 				}
 				v2, ok := args.Get("sign")
 				if !ok {
-					return nil, errors.New("missing argument sign")
+					return nil, errors.New(codes.Invalid, "missing argument sign")
 				}
 
 				if v1.Type().Nature() == semantic.Float {
@@ -317,10 +319,10 @@ func init() {
 				Required:   semantic.LabelSet{"f"},
 				Return:     semantic.Bool,
 			}),
-			func(args values.Object) (values.Value, error) {
+			func(ctx context.Context, args values.Object) (values.Value, error) {
 				v1, ok := args.Get("f")
 				if !ok {
-					return nil, errors.New("missing argument f")
+					return nil, errors.New(codes.Invalid, "missing argument f")
 				}
 
 				if v1.Type().Nature() == semantic.Float {
@@ -337,10 +339,10 @@ func init() {
 				Required:   semantic.LabelSet{"x"},
 				Return:     semantic.Bool,
 			}),
-			func(args values.Object) (values.Value, error) {
+			func(ctx context.Context, args values.Object) (values.Value, error) {
 				v1, ok := args.Get("x")
 				if !ok {
-					return nil, errors.New("missing argument x")
+					return nil, errors.New(codes.Invalid, "missing argument x")
 				}
 
 				if v1.Type().Nature() == semantic.Float {
@@ -357,7 +359,7 @@ func init() {
 				Required:   semantic.LabelSet{},
 				Return:     semantic.Float,
 			}),
-			func(args values.Object) (values.Value, error) {
+			func(ctx context.Context, args values.Object) (values.Value, error) {
 				return values.NewFloat(math.NaN()), nil
 			}, false,
 		),
@@ -369,11 +371,11 @@ func init() {
 				Required:   semantic.LabelSet{"sign"},
 				Return:     semantic.Float,
 			}),
-			func(args values.Object) (values.Value, error) {
+			func(ctx context.Context, args values.Object) (values.Value, error) {
 
 				v1, ok := args.Get("sign")
 				if !ok {
-					return nil, errors.New("missing argument sign")
+					return nil, errors.New(codes.Invalid, "missing argument sign")
 				}
 
 				if v1.Type().Nature() == semantic.Int {
@@ -390,14 +392,14 @@ func init() {
 				Required:   semantic.LabelSet{"n", "x"},
 				Return:     semantic.Float,
 			}),
-			func(args values.Object) (values.Value, error) {
+			func(ctx context.Context, args values.Object) (values.Value, error) {
 				v1, ok := args.Get("n")
 				if !ok {
-					return nil, errors.New("missing argument n")
+					return nil, errors.New(codes.Invalid, "missing argument n")
 				}
 				v2, ok := args.Get("x")
 				if !ok {
-					return nil, errors.New("missing argument x")
+					return nil, errors.New(codes.Invalid, "missing argument x")
 				}
 
 				if v1.Type().Nature() == semantic.Int {
@@ -418,14 +420,14 @@ func init() {
 				Required:   semantic.LabelSet{"n", "x"},
 				Return:     semantic.Float,
 			}),
-			func(args values.Object) (values.Value, error) {
+			func(ctx context.Context, args values.Object) (values.Value, error) {
 				v1, ok := args.Get("n")
 				if !ok {
-					return nil, errors.New("missing argument n")
+					return nil, errors.New(codes.Invalid, "missing argument n")
 				}
 				v2, ok := args.Get("x")
 				if !ok {
-					return nil, errors.New("missing argument x")
+					return nil, errors.New(codes.Invalid, "missing argument x")
 				}
 
 				if v1.Type().Nature() == semantic.Int {
@@ -446,14 +448,14 @@ func init() {
 				Required:   semantic.LabelSet{"frac", "exp"},
 				Return:     semantic.Float,
 			}),
-			func(args values.Object) (values.Value, error) {
+			func(ctx context.Context, args values.Object) (values.Value, error) {
 				v1, ok := args.Get("frac")
 				if !ok {
-					return nil, errors.New("missing argument frac")
+					return nil, errors.New(codes.Invalid, "missing argument frac")
 				}
 				v2, ok := args.Get("exp")
 				if !ok {
-					return nil, errors.New("missing argument exp")
+					return nil, errors.New(codes.Invalid, "missing argument exp")
 				}
 
 				if v1.Type().Nature() == semantic.Float {
@@ -474,10 +476,10 @@ func init() {
 				Required:   semantic.LabelSet{"n"},
 				Return:     semantic.Float,
 			}),
-			func(args values.Object) (values.Value, error) {
+			func(ctx context.Context, args values.Object) (values.Value, error) {
 				v1, ok := args.Get("n")
 				if !ok {
-					return nil, errors.New("missing argument frac")
+					return nil, errors.New(codes.Invalid, "missing argument frac")
 				}
 
 				if v1.Type().Nature() == semantic.Int {

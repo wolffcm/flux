@@ -2,18 +2,22 @@ package csv_test
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"io/ioutil"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/andreyvit/diff"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/influxdata/flux"
 	"github.com/influxdata/flux/csv"
 	"github.com/influxdata/flux/execute/executetest"
+	"github.com/influxdata/flux/memory"
 	"github.com/influxdata/flux/values"
-	"github.com/pkg/errors"
 )
 
 type TestCase struct {
@@ -21,6 +25,7 @@ type TestCase struct {
 	skip          bool
 	encoded       []byte
 	result        *executetest.Result
+	err           error
 	decoderConfig csv.ResultDecoderConfig
 	encoderConfig csv.ResultEncoderConfig
 }
@@ -181,6 +186,23 @@ var symmetricalTestCases = []TestCase{
 					{Label: "host", Type: flux.TString},
 					{Label: "_value", Type: flux.TFloat},
 				},
+			}},
+		},
+	},
+	{
+		name:          "single empty table with no columns",
+		encoderConfig: csv.DefaultEncoderConfig(),
+		encoded: toCRLF(`#datatype,string,long
+#group,false,false
+#default,_result,0
+,result,table
+`),
+		result: &executetest.Result{
+			Nm: "_result",
+			Tbls: []*executetest.Table{{
+				KeyCols:   []string(nil),
+				KeyValues: []interface{}(nil),
+				ColMeta:   []flux.ColMeta(nil),
 			}},
 		},
 	},
@@ -598,6 +620,44 @@ func TestResultDecoder(t *testing.T) {
 			},
 		},
 		{
+			name:          "single empty table and an error",
+			encoderConfig: csv.DefaultEncoderConfig(),
+			encoded: toCRLF(`#datatype,string,long,dateTime:RFC3339,dateTime:RFC3339,dateTime:RFC3339,string,string,double
+#group,false,false,true,true,false,true,true,false
+#default,_result,0,2018-04-17T00:00:00Z,2018-04-18T00:00:00Z,2018-04-17T12:00:00Z,m,localhost,6.0
+,result,table,_start,_stop,_time,_measurement,host,_value
+
+#datatype,string,string
+#group,true,true
+#default,,
+,error,reference
+,here is an error,
+`),
+			result: &executetest.Result{
+				Nm: "_result",
+				Tbls: []*executetest.Table{
+					{
+						ColMeta: []flux.ColMeta{
+							{Label: "_start", Type: flux.TTime},
+							{Label: "_stop", Type: flux.TTime},
+							{Label: "_time", Type: flux.TTime},
+							{Label: "_measurement", Type: flux.TString},
+							{Label: "host", Type: flux.TString},
+							{Label: "_value", Type: flux.TFloat},
+						},
+						KeyCols: []string{"_start", "_stop", "_measurement", "host"},
+						KeyValues: []interface{}{
+							values.ConvertTime(time.Date(2018, 04, 17, 0, 0, 0, 0, time.UTC)),
+							values.ConvertTime(time.Date(2018, 04, 18, 0, 0, 0, 0, time.UTC)),
+							"m",
+							"localhost",
+						},
+					},
+				},
+				Err: errors.New("here is an error"),
+			},
+		},
+		{
 			name:          "single table with bad default tableID",
 			encoderConfig: csv.DefaultEncoderConfig(),
 			encoded: toCRLF(`#datatype,string,long,dateTime:RFC3339,dateTime:RFC3339,dateTime:RFC3339,string,string,double
@@ -608,7 +668,7 @@ func TestResultDecoder(t *testing.T) {
 ,,0,2018-04-17T00:00:00Z,2018-04-17T00:05:00Z,2018-04-17T00:00:01Z,cpu,A,43
 `),
 			result: &executetest.Result{
-				Err: errors.New("default Table ID is not an integer"),
+				Err: errors.New("failed to read metadata: default Table ID is not an integer"),
 			},
 		},
 		{
@@ -624,6 +684,67 @@ func TestResultDecoder(t *testing.T) {
 				Err: errors.New("failed to create physical plan: query must specify explicit yields when there is more than one result."),
 			},
 		},
+		{
+			name:          "csv with EOF",
+			encoderConfig: csv.DefaultEncoderConfig(),
+			encoded:       toCRLF(""),
+			result: &executetest.Result{
+				Err: errors.New("EOF"),
+			},
+		},
+		{
+			name:          "csv with no metadata",
+			encoderConfig: csv.DefaultEncoderConfig(),
+			encoded:       toCRLF(`1,2`),
+			result: &executetest.Result{
+				Err: errors.New("failed to read metadata: missing expected annotation datatype"),
+			},
+		},
+
+		{
+			name:          "single table with unknown annotations",
+			encoderConfig: csv.DefaultEncoderConfig(),
+			encoded: toCRLF(`#datatype,string,long,dateTime:RFC3339,dateTime:RFC3339,dateTime:RFC3339,string,string,double
+#unsupported,,,,,,,,
+#group,false,false,true,true,false,true,true,false
+#default,_result,,,,,,,
+,result,table,_start,_stop,_time,_measurement,host,_value
+,,0,2018-04-17T00:00:00Z,2018-04-17T00:05:00Z,2018-04-17T00:00:00Z,cpu,A,42
+,,0,2018-04-17T00:00:00Z,2018-04-17T00:05:00Z,2018-04-17T00:00:01Z,cpu,A,43
+`),
+			result: &executetest.Result{
+				Nm: "_result",
+				Tbls: []*executetest.Table{{
+					KeyCols: []string{"_start", "_stop", "_measurement", "host"},
+					ColMeta: []flux.ColMeta{
+						{Label: "_start", Type: flux.TTime},
+						{Label: "_stop", Type: flux.TTime},
+						{Label: "_time", Type: flux.TTime},
+						{Label: "_measurement", Type: flux.TString},
+						{Label: "host", Type: flux.TString},
+						{Label: "_value", Type: flux.TFloat},
+					},
+					Data: [][]interface{}{
+						{
+							values.ConvertTime(time.Date(2018, 4, 17, 0, 0, 0, 0, time.UTC)),
+							values.ConvertTime(time.Date(2018, 4, 17, 0, 5, 0, 0, time.UTC)),
+							values.ConvertTime(time.Date(2018, 4, 17, 0, 0, 0, 0, time.UTC)),
+							"cpu",
+							"A",
+							42.0,
+						},
+						{
+							values.ConvertTime(time.Date(2018, 4, 17, 0, 0, 0, 0, time.UTC)),
+							values.ConvertTime(time.Date(2018, 4, 17, 0, 5, 0, 0, time.UTC)),
+							values.ConvertTime(time.Date(2018, 4, 17, 0, 0, 1, 0, time.UTC)),
+							"cpu",
+							"A",
+							43.0,
+						},
+					},
+				}},
+			},
+		},
 	}
 	testCases = append(testCases, symmetricalTestCases...)
 	for _, tc := range testCases {
@@ -636,7 +757,7 @@ func TestResultDecoder(t *testing.T) {
 			result, err := decoder.Decode(bytes.NewReader(tc.encoded))
 			if err != nil {
 				if tc.result.Err != nil {
-					if got, want := tc.result.Err.Error(), err.Error(); got != want {
+					if want, got := tc.result.Err.Error(), err.Error(); got != want {
 						t.Error("unexpected error -want/+got", cmp.Diff(want, got))
 					}
 					return
@@ -654,14 +775,23 @@ func TestResultDecoder(t *testing.T) {
 				got.Tbls = append(got.Tbls, cb)
 				return nil
 			}); err != nil {
-				t.Fatal(err)
+				if tc.result.Err == nil {
+					t.Fatal(err)
+				}
+				got.Err = err
 			}
 
 			got.Normalize()
 			tc.result.Normalize()
 
-			if !cmp.Equal(got, tc.result) {
+			cmpOpts := cmpopts.IgnoreFields(executetest.Result{}, "Err")
+			if !cmp.Equal(got, tc.result, cmpOpts) {
 				t.Error("unexpected results -want/+got", cmp.Diff(tc.result, got))
+			}
+			if (got.Err == nil) != (tc.result.Err == nil) {
+				t.Errorf("error mismatch in result: -want/+got:\n- %q\n+ %q", tc.result.Err, got.Err)
+			} else if got.Err != nil && got.Err.Error() != tc.result.Err.Error() {
+				t.Errorf("unexpected error message: -want/+got:\n- %q\n+ %q", tc.result.Err, got.Err)
 			}
 		})
 	}
@@ -783,6 +913,16 @@ func TestResultEncoder(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "table error",
+			result: &executetest.Result{
+				Nm: "_result",
+				Tbls: []*executetest.Table{{
+					Err: errors.New("test error"),
+				}},
+			},
+			err: errors.New("test error"),
+		},
 	}
 	testCases = append(testCases, symmetricalTestCases...)
 	for _, tc := range testCases {
@@ -795,7 +935,11 @@ func TestResultEncoder(t *testing.T) {
 			var got bytes.Buffer
 			n, err := encoder.Encode(&got, tc.result)
 			if err != nil {
-				t.Fatal(err)
+				if tc.err == nil {
+					t.Fatal(err)
+				} else if g, w := err.Error(), tc.err.Error(); g != w {
+					t.Errorf("unexpected error -want/+got:\n\t- %q\n\t+ %q", g, w)
+				}
 			}
 
 			if g, w := got.String(), string(tc.encoded); g != w {
@@ -979,10 +1123,54 @@ func TestMultiResultEncoder(t *testing.T) {
 		{
 			name:   "error results",
 			config: csv.DefaultEncoderConfig(),
-			results: errorResultIterator{
-				Error: errors.New("test error"),
-			},
-			encoded: toCRLF(`#datatype,string,string
+			results: flux.NewSliceResultIterator([]flux.Result{
+				&executetest.Result{
+					Nm: "mean",
+					Tbls: []*executetest.Table{{
+						KeyCols: []string{"_start", "_stop", "_measurement", "host"},
+						ColMeta: []flux.ColMeta{
+							{Label: "_start", Type: flux.TTime},
+							{Label: "_stop", Type: flux.TTime},
+							{Label: "_time", Type: flux.TTime},
+							{Label: "_measurement", Type: flux.TString},
+							{Label: "host", Type: flux.TString},
+							{Label: "_value", Type: flux.TFloat},
+						},
+						Data: [][]interface{}{
+							{
+								values.ConvertTime(time.Date(2018, 4, 17, 0, 0, 0, 0, time.UTC)),
+								values.ConvertTime(time.Date(2018, 4, 17, 0, 5, 0, 0, time.UTC)),
+								values.ConvertTime(time.Date(2018, 4, 17, 0, 0, 0, 0, time.UTC)),
+								"cpu",
+								"A",
+								40.0,
+							},
+							{
+								values.ConvertTime(time.Date(2018, 4, 17, 0, 0, 0, 0, time.UTC)),
+								values.ConvertTime(time.Date(2018, 4, 17, 0, 5, 0, 0, time.UTC)),
+								values.ConvertTime(time.Date(2018, 4, 17, 0, 0, 1, 0, time.UTC)),
+								"cpu",
+								"A",
+								40.1,
+							},
+						},
+					}},
+				},
+				// errors only get encoded after something has been written to the encoder.
+				&executetest.Result{
+					Nm:  "test",
+					Err: errors.New("test error"),
+				},
+			}),
+			encoded: toCRLF(`#datatype,string,long,dateTime:RFC3339,dateTime:RFC3339,dateTime:RFC3339,string,string,double
+#group,false,false,true,true,false,true,true,false
+#default,mean,,,,,,,
+,result,table,_start,_stop,_time,_measurement,host,_value
+,,0,2018-04-17T00:00:00Z,2018-04-17T00:05:00Z,2018-04-17T00:00:00Z,cpu,A,40
+,,0,2018-04-17T00:00:00Z,2018-04-17T00:05:00Z,2018-04-17T00:00:01Z,cpu,A,40.1
+
+
+#datatype,string,string
 #group,true,true
 #default,,
 ,error,reference
@@ -990,19 +1178,16 @@ func TestMultiResultEncoder(t *testing.T) {
 `),
 		},
 		{
-			name:   "returns query errors",
+			name:   "returns table errors",
 			config: csv.DefaultEncoderConfig(),
-			results: flux.NewSliceResultIterator([]flux.Result{
-				&executetest.Result{
-					Err: errors.New("execution error"),
-				},
-			}),
-			encoded: toCRLF(`#datatype,string,string
-#group,true,true
-#default,,
-,error,reference
-,execution error,
-`),
+			results: flux.NewSliceResultIterator([]flux.Result{&executetest.Result{
+				Nm: "mean",
+				Tbls: []*executetest.Table{{
+					Err: errors.New("test error"),
+				}},
+			}}),
+			encoded: nil,
+			err:     errors.New("test error"),
 		},
 		{
 			name:   "returns encoding errors",
@@ -1347,31 +1532,55 @@ func TestMultiResultDecoder(t *testing.T) {
 	}
 }
 
+func TestTable(t *testing.T) {
+	executetest.RunTableTests(t, executetest.TableTest{
+		NewFn: func(ctx context.Context, alloc *memory.Allocator) flux.TableIterator {
+			decoder := csv.NewResultDecoder(csv.ResultDecoderConfig{
+				// Set this to a low value so we can have a table with
+				// multiple buffers.
+				MaxBufferCount: 5,
+				Allocator:      alloc,
+			})
+			r, err := decoder.Decode(strings.NewReader(`#datatype,string,long,dateTime:RFC3339,string,double
+#group,false,false,false,true,false
+#default,_result,0,,A,
+,result,table,_time,host,_value
+,,,2018-04-17T00:00:00Z,,1.0
+,,,2018-04-17T01:00:00Z,,2.0
+,,,2018-04-17T02:00:00Z,,3.0
+,,,2018-04-17T03:00:00Z,,4.0
+
+#datatype,string,long,dateTime:RFC3339,string,double
+#group,false,false,false,true,false
+#default,_result,1,,B,
+,result,table,_time,host,_value
+
+#datatype,string,long,dateTime:RFC3339,string,double
+#group,false,false,false,true,false
+#default,_result,2,,C,
+,result,table,_time,host,_value
+,,,2018-04-17T00:00:00Z,,1.0
+,,,2018-04-17T01:00:00Z,,2.0
+,,,2018-04-17T02:00:00Z,,3.0
+,,,2018-04-17T03:00:00Z,,4.0
+,,,2018-04-17T04:00:00Z,,1.0
+,,,2018-04-17T05:00:00Z,,2.0
+,,,2018-04-17T06:00:00Z,,3.0
+,,,2018-04-17T07:00:00Z,,4.0
+`))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			return r.Tables()
+		},
+		IsDone: func(tbl flux.Table) bool {
+			return tbl.(interface{ IsDone() bool }).IsDone()
+		},
+	})
+}
+
 var crlfPattern = regexp.MustCompile(`\r?\n`)
 
 func toCRLF(data string) []byte {
 	return []byte(crlfPattern.ReplaceAllString(data, "\r\n"))
-}
-
-type errorResultIterator struct {
-	Error error
-}
-
-func (r errorResultIterator) More() bool {
-	return false
-}
-
-func (r errorResultIterator) Next() flux.Result {
-	panic("no results")
-}
-
-func (r errorResultIterator) Release() {
-}
-
-func (r errorResultIterator) Err() error {
-	return r.Error
-}
-
-func (r errorResultIterator) Statistics() flux.Statistics {
-	return flux.Statistics{}
 }

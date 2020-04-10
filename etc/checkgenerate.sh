@@ -2,8 +2,8 @@
 
 set -e
 
-make clean
-make all
+make cleangenerate
+make generate
 
 status=$(git status --porcelain)
 if [ -n "$status" ]; then

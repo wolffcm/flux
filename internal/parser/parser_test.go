@@ -51,14 +51,174 @@ func BenchmarkParser(b *testing.B) {
 
 func testParser(runFn func(name string, fn func(t testing.TB))) {
 	for _, tt := range []struct {
-		name string
-		raw  string
-		want *ast.File
+		name  string
+		raw   string
+		want  *ast.File
+		nerrs int
 	}{
+		{
+			name: "string interpolation",
+			raw:  `"a + b = ${a + b}"`,
+			want: &ast.File{
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:19"),
+				Body: []ast.Statement{
+					&ast.ExpressionStatement{
+						BaseNode: base("1:1", "1:19"),
+						Expression: &ast.StringExpression{
+							BaseNode: base("1:1", "1:19"),
+							Parts: []ast.StringExpressionPart{
+								&ast.TextPart{
+									BaseNode: base("1:2", "1:10"),
+									Value:    "a + b = ",
+								},
+								&ast.InterpolatedPart{
+									BaseNode: base("1:10", "1:18"),
+									Expression: &ast.BinaryExpression{
+										BaseNode: base("1:12", "1:17"),
+										Left: &ast.Identifier{
+											BaseNode: base("1:12", "1:13"),
+											Name:     "a",
+										},
+										Right: &ast.Identifier{
+											BaseNode: base("1:16", "1:17"),
+											Name:     "b",
+										},
+										Operator: ast.AdditionOperator,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "string interpolation",
+			raw:  `"a = ${a} and b = ${b}"`,
+			want: &ast.File{
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:24"),
+				Body: []ast.Statement{
+					&ast.ExpressionStatement{
+						BaseNode: base("1:1", "1:24"),
+						Expression: &ast.StringExpression{
+							BaseNode: base("1:1", "1:24"),
+							Parts: []ast.StringExpressionPart{
+								&ast.TextPart{
+									BaseNode: base("1:2", "1:6"),
+									Value:    "a = ",
+								},
+								&ast.InterpolatedPart{
+									BaseNode: base("1:6", "1:10"),
+									Expression: &ast.Identifier{
+										BaseNode: base("1:8", "1:9"),
+										Name:     "a",
+									},
+								},
+								&ast.TextPart{
+									BaseNode: base("1:10", "1:19"),
+									Value:    " and b = ",
+								},
+								&ast.InterpolatedPart{
+									BaseNode: base("1:19", "1:23"),
+									Expression: &ast.Identifier{
+										BaseNode: base("1:21", "1:22"),
+										Name:     "b",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "nested string interpolation",
+			raw:  `"we ${"can ${"add" + "strings"}"} together"`,
+			want: &ast.File{
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:44"),
+				Body: []ast.Statement{
+					&ast.ExpressionStatement{
+						BaseNode: base("1:1", "1:44"),
+						Expression: &ast.StringExpression{
+							BaseNode: base("1:1", "1:44"),
+							Parts: []ast.StringExpressionPart{
+								&ast.TextPart{
+									BaseNode: base("1:2", "1:5"),
+									Value:    "we ",
+								},
+								&ast.InterpolatedPart{
+									BaseNode: base("1:5", "1:34"),
+									Expression: &ast.StringExpression{
+										BaseNode: base("1:7", "1:33"),
+										Parts: []ast.StringExpressionPart{
+											&ast.TextPart{
+												BaseNode: base("1:8", "1:12"),
+												Value:    "can ",
+											},
+											&ast.InterpolatedPart{
+												BaseNode: base("1:12", "1:32"),
+												Expression: &ast.BinaryExpression{
+													BaseNode: base("1:14", "1:31"),
+													Left: &ast.StringLiteral{
+														BaseNode: base("1:14", "1:19"),
+														Value:    "add",
+													},
+													Right: &ast.StringLiteral{
+														BaseNode: base("1:22", "1:31"),
+														Value:    "strings",
+													},
+													Operator: ast.AdditionOperator,
+												},
+											},
+										},
+									},
+								},
+								&ast.TextPart{
+									BaseNode: base("1:34", "1:43"),
+									Value:    " together",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "bad string expression",
+			raw:  `fn = (a) => "${a}`,
+			want: &ast.File{
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:18"),
+				Body: []ast.Statement{&ast.VariableAssignment{
+					BaseNode: base("1:1", "1:18"),
+					ID:       &ast.Identifier{BaseNode: base("1:1", "1:3"), Name: "fn"},
+					Init: &ast.FunctionExpression{
+						BaseNode: base("1:6", "1:18"),
+						Params: []*ast.Property{{
+							BaseNode: base("1:7", "1:8"),
+							Key:      &ast.Identifier{BaseNode: base("1:7", "1:8"), Name: "a"},
+						}},
+						Body: &ast.StringExpression{
+							BaseNode: ast.BaseNode{
+								Loc: loc("1:13", "1:18"),
+								Errors: []ast.Error{
+									{Msg: "got unexpected token in string expression @1:18-1:18: EOF"},
+								},
+							},
+						},
+					},
+				}},
+			},
+			nerrs: 1,
+		},
 		{
 			name: "package clause",
 			raw:  `package foo`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:12"),
 				Package: &ast.PackageClause{
 					BaseNode: base("1:1", "1:12"),
@@ -73,6 +233,7 @@ func testParser(runFn func(name string, fn func(t testing.TB))) {
 			name: "import",
 			raw:  `import "path/foo"`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:18"),
 				Imports: []*ast.ImportDeclaration{{
 					BaseNode: base("1:1", "1:18"),
@@ -87,6 +248,7 @@ func testParser(runFn func(name string, fn func(t testing.TB))) {
 			name: "import as",
 			raw:  `import bar "path/foo"`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:22"),
 				Imports: []*ast.ImportDeclaration{{
 					BaseNode: base("1:1", "1:22"),
@@ -106,6 +268,7 @@ func testParser(runFn func(name string, fn func(t testing.TB))) {
 			raw: `import "path/foo"
 import "path/bar"`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "2:18"),
 				Imports: []*ast.ImportDeclaration{
 					{
@@ -133,6 +296,7 @@ package baz
 import "path/foo"
 import "path/bar"`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("2:1", "5:18"),
 				Package: &ast.PackageClause{
 					BaseNode: base("2:1", "2:12"),
@@ -169,6 +333,7 @@ import "path/bar"
 
 1 + 1`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("2:1", "7:6"),
 				Package: &ast.PackageClause{
 					BaseNode: base("2:1", "2:12"),
@@ -222,6 +387,7 @@ import "path/bar"
 				retry: 5,
 			  }`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "7:7"),
 				Body: []ast.Statement{
 					&ast.OptionStatement{
@@ -317,6 +483,7 @@ import "path/bar"
 				// Task will execute the following query
 				from() |> count()`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "7:22"),
 				Body: []ast.Statement{
 					&ast.OptionStatement{
@@ -390,6 +557,7 @@ import "path/bar"
 			name: "qualified option",
 			raw:  `option alert.state = "Warning"`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:31"),
 				Body: []ast.Statement{
 					&ast.OptionStatement{
@@ -420,6 +588,7 @@ import "path/bar"
 			name: "builtin",
 			raw:  "builtin from",
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:13"),
 				Body: []ast.Statement{
 					&ast.BuiltinStatement{
@@ -436,6 +605,7 @@ import "path/bar"
 			name: "test",
 			raw:  "test mean = {want: 0, got: 0}",
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:30"),
 				Body: []ast.Statement{
 					&ast.TestStatement{
@@ -482,6 +652,7 @@ import "path/bar"
 			name: "from",
 			raw:  `from()`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:7"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -502,6 +673,7 @@ import "path/bar"
 			raw: `// Comment
 			from()`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("2:4", "2:10"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -521,6 +693,7 @@ import "path/bar"
 			name: "identifier with number",
 			raw:  `tan2()`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:7"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -540,6 +713,7 @@ import "path/bar"
 			name: "regex literal",
 			raw:  `/.*/`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:5"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -556,6 +730,7 @@ import "path/bar"
 			name: "regex literal with escape sequence",
 			raw:  `/a\/b\\c\d/`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:12"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -572,6 +747,7 @@ import "path/bar"
 			name: "bad regex literal",
 			raw:  `/*/`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:4"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -587,11 +763,13 @@ import "path/bar"
 					},
 				},
 			},
+			nerrs: 1,
 		},
 		{
 			name: "regex match operators",
 			raw:  `"a" =~ /.*/ and "b" !~ /c$/`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:28"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -632,6 +810,7 @@ import "path/bar"
 			name: "declare variable as an int",
 			raw:  `howdy = 1`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:10"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -652,6 +831,7 @@ import "path/bar"
 			name: "declare variable as a float",
 			raw:  `howdy = 1.1`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:12"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -672,6 +852,7 @@ import "path/bar"
 			name: "declare variable as an array",
 			raw:  `howdy = [1, 2, 3, 4]`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:21"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -709,6 +890,7 @@ import "path/bar"
 			name: "declare variable as an empty array",
 			raw:  `howdy = []`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:11"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -729,6 +911,7 @@ import "path/bar"
 			raw: `howdy = 1
 			from()`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "2:10"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -760,6 +943,7 @@ import "path/bar"
 			raw: `howdy = from()
 			howdy.count()`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "2:17"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -800,6 +984,7 @@ import "path/bar"
 			name: "pipe expression",
 			raw:  `from() |> count()`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:18"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -831,6 +1016,7 @@ import "path/bar"
 			name: "pipe expression to member expression function",
 			raw:  `a |> b.c(d:e)`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:14"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -878,6 +1064,7 @@ import "path/bar"
 			name: "literal pipe expression",
 			raw:  `5 |> pow2()`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:12"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -905,6 +1092,7 @@ import "path/bar"
 			name: "member expression pipe expression",
 			raw:  `foo.bar |> baz()`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:17"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -939,6 +1127,7 @@ import "path/bar"
 			name: "multiple pipe expressions",
 			raw:  `from() |> range() |> filter() |> count()`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:41"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -988,6 +1177,7 @@ import "path/bar"
 			name: "pipe expression into non-call expression",
 			raw:  `foo() |> bar`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:13"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -1013,6 +1203,7 @@ import "path/bar"
 					},
 				},
 			},
+			nerrs: 1,
 		},
 		{
 			name: "two variables for two froms",
@@ -1021,6 +1212,7 @@ import "path/bar"
 			howdy|>count()
 			doody|>sum()`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "4:16"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -1092,6 +1284,7 @@ import "path/bar"
 			name: "from with database",
 			raw:  `from(bucket:"telegraf/autogen")`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:32"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -1132,6 +1325,7 @@ import "path/bar"
 			m["key2"]
 			`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "3:13"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -1203,6 +1397,7 @@ import "path/bar"
 			name: "object with string literal key",
 			raw:  `x = {"a": 10}`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:14"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -1235,6 +1430,7 @@ import "path/bar"
 			name: "object with mixed keys",
 			raw:  `x = {"a": 10, b: 11}`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:21"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -1278,6 +1474,7 @@ import "path/bar"
 			name: "implicit key object literal",
 			raw:  `x = {a, b}`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:11"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -1290,12 +1487,14 @@ import "path/bar"
 							BaseNode: base("1:5", "1:11"),
 							Properties: []*ast.Property{
 								&ast.Property{
+									BaseNode: base("1:6", "1:7"),
 									Key: &ast.Identifier{
 										BaseNode: base("1:6", "1:7"),
 										Name:     "a",
 									},
 								},
 								&ast.Property{
+									BaseNode: base("1:9", "1:10"),
 									Key: &ast.Identifier{
 										BaseNode: base("1:9", "1:10"),
 										Name:     "b",
@@ -1308,9 +1507,174 @@ import "path/bar"
 			},
 		},
 		{
+			name:  "implicit key object literal error",
+			raw:   `x = {"a", b}`,
+			nerrs: 1,
+			want: &ast.File{
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:13"),
+				Body: []ast.Statement{
+					&ast.VariableAssignment{
+						BaseNode: base("1:1", "1:13"),
+						ID: &ast.Identifier{
+							BaseNode: base("1:1", "1:2"),
+							Name:     "x",
+						},
+						Init: &ast.ObjectExpression{
+							BaseNode: base("1:5", "1:13"),
+							Properties: []*ast.Property{
+								&ast.Property{
+									BaseNode: base(
+										"1:6", "1:9",
+										ast.Error{Msg: `string literal key "a" must have a value`},
+									),
+									Key: &ast.StringLiteral{
+										BaseNode: base("1:6", "1:9"),
+										Value:    "a",
+									},
+								},
+								&ast.Property{
+									BaseNode: base("1:11", "1:12"),
+									Key: &ast.Identifier{
+										BaseNode: base("1:11", "1:12"),
+										Name:     "b",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "implicit and explicit keys object literal error",
+			raw:   `x = {a, b:c}`,
+			nerrs: 1,
+			want: &ast.File{
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:13"),
+				Body: []ast.Statement{
+					&ast.VariableAssignment{
+						BaseNode: base("1:1", "1:13"),
+						ID: &ast.Identifier{
+							BaseNode: base("1:1", "1:2"),
+							Name:     "x",
+						},
+						Init: &ast.ObjectExpression{
+							BaseNode: base(
+								"1:5", "1:13",
+								ast.Error{Msg: `cannot mix implicit and explicit properties`},
+							),
+							Properties: []*ast.Property{
+								&ast.Property{
+									BaseNode: base("1:6", "1:7"),
+									Key: &ast.Identifier{
+										BaseNode: base("1:6", "1:7"),
+										Name:     "a",
+									},
+								},
+								&ast.Property{
+									BaseNode: base("1:9", "1:12"),
+									Key: &ast.Identifier{
+										BaseNode: base("1:9", "1:10"),
+										Name:     "b",
+									},
+									Value: &ast.Identifier{
+										BaseNode: base("1:11", "1:12"),
+										Name:     "c",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "object with",
+			raw:  `{a with b:c, d:e}`,
+			want: &ast.File{
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:18"),
+				Body: []ast.Statement{
+					&ast.ExpressionStatement{
+						BaseNode: base("1:1", "1:18"),
+						Expression: &ast.ObjectExpression{
+							BaseNode: base("1:1", "1:18"),
+							With: &ast.Identifier{
+								BaseNode: base("1:2", "1:3"),
+								Name:     "a",
+							},
+							Properties: []*ast.Property{
+								&ast.Property{
+									BaseNode: base("1:9", "1:12"),
+									Key: &ast.Identifier{
+										BaseNode: base("1:9", "1:10"),
+										Name:     "b",
+									},
+									Value: &ast.Identifier{
+										BaseNode: base("1:11", "1:12"),
+										Name:     "c",
+									},
+								},
+								&ast.Property{
+									BaseNode: base("1:14", "1:17"),
+									Key: &ast.Identifier{
+										BaseNode: base("1:14", "1:15"),
+										Name:     "d",
+									},
+									Value: &ast.Identifier{
+										BaseNode: base("1:16", "1:17"),
+										Name:     "e",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "object with implicit keys",
+			raw:  `{a with b, c}`,
+			want: &ast.File{
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:14"),
+				Body: []ast.Statement{
+					&ast.ExpressionStatement{
+						BaseNode: base("1:1", "1:14"),
+						Expression: &ast.ObjectExpression{
+							BaseNode: base("1:1", "1:14"),
+							With: &ast.Identifier{
+								BaseNode: base("1:2", "1:3"),
+								Name:     "a",
+							},
+							Properties: []*ast.Property{
+								&ast.Property{
+									BaseNode: base("1:9", "1:10"),
+									Key: &ast.Identifier{
+										BaseNode: base("1:9", "1:10"),
+										Name:     "b",
+									},
+								},
+								&ast.Property{
+									BaseNode: base("1:12", "1:13"),
+									Key: &ast.Identifier{
+										BaseNode: base("1:12", "1:13"),
+										Name:     "c",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "index expression",
 			raw:  `a[3]`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:5"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -1334,6 +1698,7 @@ import "path/bar"
 			name: "nested index expression",
 			raw:  `a[3][5]`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:8"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -1364,6 +1729,7 @@ import "path/bar"
 			name: "access indexed object returned from function call",
 			raw:  `f()[3]`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:7"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -1390,6 +1756,7 @@ import "path/bar"
 			name: "index with member expressions",
 			raw:  `a.b["c"]`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:9"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -1420,6 +1787,7 @@ import "path/bar"
 			name: "index with member with call expression",
 			raw:  `a.b()["c"]`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:11"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -1453,6 +1821,7 @@ import "path/bar"
 			name: "index with unclosed bracket",
 			raw:  `a[b()`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:6"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -1479,11 +1848,13 @@ import "path/bar"
 					},
 				},
 			},
+			nerrs: 1,
 		},
 		{
 			name: "index with unbalanced parenthesis",
 			raw:  `a[b(]`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:6"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -1510,11 +1881,13 @@ import "path/bar"
 					},
 				},
 			},
+			nerrs: 1,
 		},
 		{
 			name: "index with unexpected rparen",
 			raw:  `a[b)]`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:6"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -1538,11 +1911,13 @@ import "path/bar"
 					},
 				},
 			},
+			nerrs: 1,
 		},
 		{
 			name: "binary expression",
 			raw:  `_value < 10.0`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:14"),
 				Body: []ast.Statement{&ast.ExpressionStatement{
 					BaseNode: base("1:1", "1:14"),
@@ -1565,6 +1940,7 @@ import "path/bar"
 			name: "member expression binary expression",
 			raw:  `r._value < 10.0`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:16"),
 				Body: []ast.Statement{&ast.ExpressionStatement{
 					BaseNode: base("1:1", "1:16"),
@@ -1597,6 +1973,7 @@ import "path/bar"
             c = a + b
             d = a`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "4:18"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -1659,6 +2036,7 @@ import "path/bar"
 			raw: `a = 5
             c = -a`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "2:19"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -1695,6 +2073,7 @@ import "path/bar"
 			raw: `a = 5
             c = 10 * -a`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "2:24"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -1739,6 +2118,7 @@ import "path/bar"
 			raw: `a = 5.0
             10.0 * -a == -0.5 or a == 6.0`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "2:42"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -1803,6 +2183,28 @@ import "path/bar"
 			},
 		},
 		{
+			name: "unary expression with member expression",
+			raw:  `not m.b`,
+			want: &ast.File{
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:8"),
+				Body: []ast.Statement{
+					&ast.ExpressionStatement{
+						BaseNode: base("1:1", "1:8"),
+						Expression: &ast.UnaryExpression{
+							BaseNode: base("1:1", "1:8"),
+							Operator: ast.NotOperator,
+							Argument: &ast.MemberExpression{
+								BaseNode: base("1:5", "1:8"),
+								Object:   &ast.Identifier{BaseNode: base("1:5", "1:6"), Name: "m"},
+								Property: &ast.Identifier{BaseNode: base("1:7", "1:8"), Name: "b"},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "unary expressions with too many comments",
 			raw: `// define a
 a = 5.0
@@ -1811,6 +2213,7 @@ a = 5.0
 	// or this
 	or a == 6.0`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("2:1", "6:13"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -1878,6 +2281,7 @@ a = 5.0
 			name: "expressions with function calls",
 			raw:  `a = foo() == 10`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:16"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -1910,6 +2314,7 @@ a = 5.0
 			raw: `
             not (f() == 6.0 * x) or fail()`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("2:13", "2:43"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -1918,28 +2323,31 @@ a = 5.0
 							BaseNode: base("2:13", "2:43"),
 							Operator: ast.OrOperator,
 							Left: &ast.UnaryExpression{
-								BaseNode: base("2:13", "2:32"),
+								BaseNode: base("2:13", "2:33"),
 								Operator: ast.NotOperator,
-								Argument: &ast.BinaryExpression{
-									BaseNode: base("2:18", "2:32"),
-									Operator: ast.EqualOperator,
-									Left: &ast.CallExpression{
-										BaseNode: base("2:18", "2:21"),
-										Callee: &ast.Identifier{
-											BaseNode: base("2:18", "2:19"),
-											Name:     "f",
+								Argument: &ast.ParenExpression{
+									BaseNode: base("2:17", "2:33"),
+									Expression: &ast.BinaryExpression{
+										BaseNode: base("2:18", "2:32"),
+										Operator: ast.EqualOperator,
+										Left: &ast.CallExpression{
+											BaseNode: base("2:18", "2:21"),
+											Callee: &ast.Identifier{
+												BaseNode: base("2:18", "2:19"),
+												Name:     "f",
+											},
 										},
-									},
-									Right: &ast.BinaryExpression{
-										BaseNode: base("2:25", "2:32"),
-										Operator: ast.MultiplicationOperator,
-										Left: &ast.FloatLiteral{
-											BaseNode: base("2:25", "2:28"),
-											Value:    6,
-										},
-										Right: &ast.Identifier{
-											BaseNode: base("2:31", "2:32"),
-											Name:     "x",
+										Right: &ast.BinaryExpression{
+											BaseNode: base("2:25", "2:32"),
+											Operator: ast.MultiplicationOperator,
+											Left: &ast.FloatLiteral{
+												BaseNode: base("2:25", "2:28"),
+												Value:    6,
+											},
+											Right: &ast.Identifier{
+												BaseNode: base("2:31", "2:32"),
+												Name:     "x",
+											},
 										},
 									},
 								},
@@ -1961,46 +2369,128 @@ a = 5.0
 			raw: `
             (not (f() == 6.0 * x) or fail())`,
 			want: &ast.File{
-				BaseNode: base("2:13", "2:44"),
+				Metadata: "parser-type=go",
+				BaseNode: base("2:13", "2:45"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
-						BaseNode: base("2:14", "2:44"),
-						Expression: &ast.LogicalExpression{
-							BaseNode: base("2:14", "2:44"),
-							Operator: ast.OrOperator,
-							Left: &ast.UnaryExpression{
-								BaseNode: base("2:14", "2:33"),
-								Operator: ast.NotOperator,
-								Argument: &ast.BinaryExpression{
-									BaseNode: base("2:19", "2:33"),
-									Operator: ast.EqualOperator,
-									Left: &ast.CallExpression{
-										BaseNode: base("2:19", "2:22"),
-										Callee: &ast.Identifier{
-											BaseNode: base("2:19", "2:20"),
-											Name:     "f",
+						BaseNode: base("2:13", "2:45"),
+						Expression: &ast.ParenExpression{
+							BaseNode: base("2:13", "2:45"),
+							Expression: &ast.LogicalExpression{
+								BaseNode: base("2:14", "2:44"),
+								Operator: ast.OrOperator,
+								Left: &ast.UnaryExpression{
+									BaseNode: base("2:14", "2:34"),
+									Operator: ast.NotOperator,
+									Argument: &ast.ParenExpression{
+										BaseNode: base("2:18", "2:34"),
+										Expression: &ast.BinaryExpression{
+											BaseNode: base("2:19", "2:33"),
+											Operator: ast.EqualOperator,
+											Left: &ast.CallExpression{
+												BaseNode: base("2:19", "2:22"),
+												Callee: &ast.Identifier{
+													BaseNode: base("2:19", "2:20"),
+													Name:     "f",
+												},
+											},
+											Right: &ast.BinaryExpression{
+												BaseNode: base("2:26", "2:33"),
+												Operator: ast.MultiplicationOperator,
+												Left: &ast.FloatLiteral{
+													BaseNode: base("2:26", "2:29"),
+													Value:    6,
+												},
+												Right: &ast.Identifier{
+													BaseNode: base("2:32", "2:33"),
+													Name:     "x",
+												},
+											},
 										},
 									},
-									Right: &ast.BinaryExpression{
-										BaseNode: base("2:26", "2:33"),
-										Operator: ast.MultiplicationOperator,
-										Left: &ast.FloatLiteral{
-											BaseNode: base("2:26", "2:29"),
-											Value:    6,
-										},
-										Right: &ast.Identifier{
-											BaseNode: base("2:32", "2:33"),
-											Name:     "x",
-										},
+								},
+								Right: &ast.CallExpression{
+									BaseNode: base("2:38", "2:44"),
+									Callee: &ast.Identifier{
+										BaseNode: base("2:38", "2:42"),
+										Name:     "fail",
 									},
 								},
 							},
-							Right: &ast.CallExpression{
-								BaseNode: base("2:38", "2:44"),
-								Callee: &ast.Identifier{
-									BaseNode: base("2:38", "2:42"),
-									Name:     "fail",
-								},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "modulo op - ints",
+			raw:  `3 % 8`,
+			want: &ast.File{
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:6"),
+				Body: []ast.Statement{
+					&ast.ExpressionStatement{
+						BaseNode: base("1:1", "1:6"),
+						Expression: &ast.BinaryExpression{
+							BaseNode: base("1:1", "1:6"),
+							Operator: ast.ModuloOperator,
+							Left: &ast.IntegerLiteral{
+								BaseNode: base("1:1", "1:2"),
+								Value:    3,
+							},
+							Right: &ast.IntegerLiteral{
+								BaseNode: base("1:5", "1:6"),
+								Value:    8,
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "modulo op - floats",
+			raw:  `8.3 % 3.1`,
+			want: &ast.File{
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:10"),
+				Body: []ast.Statement{
+					&ast.ExpressionStatement{
+						BaseNode: base("1:1", "1:10"),
+						Expression: &ast.BinaryExpression{
+							BaseNode: base("1:1", "1:10"),
+							Operator: ast.ModuloOperator,
+							Left: &ast.FloatLiteral{
+								BaseNode: base("1:1", "1:4"),
+								Value:    8.3,
+							},
+							Right: &ast.FloatLiteral{
+								BaseNode: base("1:7", "1:10"),
+								Value:    3.1,
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "power op",
+			raw:  `8 ^ 3`,
+			want: &ast.File{
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:6"),
+				Body: []ast.Statement{
+					&ast.ExpressionStatement{
+						BaseNode: base("1:1", "1:6"),
+						Expression: &ast.BinaryExpression{
+							BaseNode: base("1:1", "1:6"),
+							Operator: ast.PowerOperator,
+							Left: &ast.IntegerLiteral{
+								BaseNode: base("1:1", "1:2"),
+								Value:    8,
+							},
+							Right: &ast.IntegerLiteral{
+								BaseNode: base("1:5", "1:6"),
+								Value:    3,
 							},
 						},
 					},
@@ -2011,6 +2501,7 @@ a = 5.0
 			name: "binary operator precedence",
 			raw:  `a / b - 1.0`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:12"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -2043,6 +2534,7 @@ a = 5.0
 			name: "binary operator precedence - literals only",
 			raw:  `2 / "a" - 1.0`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:14"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -2075,6 +2567,7 @@ a = 5.0
 			name: "binary operator precedence - double subtraction",
 			raw:  `1 - 2 - 3`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:10"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -2107,27 +2600,31 @@ a = 5.0
 			name: "binary operator precedence - double subtraction with parens",
 			raw:  `1 - (2 - 3)`,
 			want: &ast.File{
-				BaseNode: base("1:1", "1:11"),
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:12"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
-						BaseNode: base("1:1", "1:11"),
+						BaseNode: base("1:1", "1:12"),
 						Expression: &ast.BinaryExpression{
-							BaseNode: base("1:1", "1:11"),
+							BaseNode: base("1:1", "1:12"),
 							Operator: ast.SubtractionOperator,
 							Left: &ast.IntegerLiteral{
 								BaseNode: base("1:1", "1:2"),
 								Value:    1,
 							},
-							Right: &ast.BinaryExpression{
-								BaseNode: base("1:6", "1:11"),
-								Operator: ast.SubtractionOperator,
-								Left: &ast.IntegerLiteral{
-									BaseNode: base("1:6", "1:7"),
-									Value:    2,
-								},
-								Right: &ast.IntegerLiteral{
-									BaseNode: base("1:10", "1:11"),
-									Value:    3,
+							Right: &ast.ParenExpression{
+								BaseNode: base("1:5", "1:12"),
+								Expression: &ast.BinaryExpression{
+									BaseNode: base("1:6", "1:11"),
+									Operator: ast.SubtractionOperator,
+									Left: &ast.IntegerLiteral{
+										BaseNode: base("1:6", "1:7"),
+										Value:    2,
+									},
+									Right: &ast.IntegerLiteral{
+										BaseNode: base("1:10", "1:11"),
+										Value:    3,
+									},
 								},
 							},
 						},
@@ -2139,6 +2636,7 @@ a = 5.0
 			name: "binary operator precedence - double sum",
 			raw:  `1 + 2 + 3`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:10"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -2171,27 +2669,31 @@ a = 5.0
 			name: "binary operator precedence - double sum with parens",
 			raw:  `1 + (2 + 3)`,
 			want: &ast.File{
-				BaseNode: base("1:1", "1:11"),
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:12"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
-						BaseNode: base("1:1", "1:11"),
+						BaseNode: base("1:1", "1:12"),
 						Expression: &ast.BinaryExpression{
-							BaseNode: base("1:1", "1:11"),
+							BaseNode: base("1:1", "1:12"),
 							Operator: ast.AdditionOperator,
 							Left: &ast.IntegerLiteral{
 								BaseNode: base("1:1", "1:2"),
 								Value:    1,
 							},
-							Right: &ast.BinaryExpression{
-								BaseNode: base("1:6", "1:11"),
-								Operator: ast.AdditionOperator,
-								Left: &ast.IntegerLiteral{
-									BaseNode: base("1:6", "1:7"),
-									Value:    2,
-								},
-								Right: &ast.IntegerLiteral{
-									BaseNode: base("1:10", "1:11"),
-									Value:    3,
+							Right: &ast.ParenExpression{
+								BaseNode: base("1:5", "1:12"),
+								Expression: &ast.BinaryExpression{
+									BaseNode: base("1:6", "1:11"),
+									Operator: ast.AdditionOperator,
+									Left: &ast.IntegerLiteral{
+										BaseNode: base("1:6", "1:7"),
+										Value:    2,
+									},
+									Right: &ast.IntegerLiteral{
+										BaseNode: base("1:10", "1:11"),
+										Value:    3,
+									},
 								},
 							},
 						},
@@ -2203,6 +2705,7 @@ a = 5.0
 			name: "logical unary operator precedence",
 			raw:  `not -1 == a`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:12"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -2233,9 +2736,10 @@ a = 5.0
 		},
 		{
 			name: "all operators precedence",
-			raw: `a() == b.a + b.c * d < 100 and e != f[g] and h > i * j and
+			raw: `a() == b.a + b.c % d < 100 and e != f[g] and h > i * j and
 k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "2:72"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -2284,7 +2788,7 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 														},
 														Right: &ast.BinaryExpression{
 															BaseNode: base("1:14", "1:21"),
-															Operator: ast.MultiplicationOperator,
+															Operator: ast.ModuloOperator,
 															Left: &ast.MemberExpression{
 																BaseNode: base("1:14", "1:17"),
 																Object: &ast.Identifier{
@@ -2462,6 +2966,7 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 			name: "logical operators precedence 1",
 			raw:  `not a or b`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:11"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -2490,6 +2995,7 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 			name: "logical operators precedence 2",
 			raw:  `a or not b`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:11"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -2518,6 +3024,7 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 			name: "logical operators precedence 3",
 			raw:  `not a and b`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:12"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -2546,6 +3053,7 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 			name: "logical operators precedence 4",
 			raw:  `a and not b`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:12"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -2574,6 +3082,7 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 			name: "logical operators precedence 5",
 			raw:  `a and b or c`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:13"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -2606,6 +3115,7 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 			name: "logical operators precedence 6",
 			raw:  `a or b and c`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:13"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -2638,23 +3148,27 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 			name: "logical operators precedence 7",
 			raw:  `not (a or b)`,
 			want: &ast.File{
-				BaseNode: base("1:1", "1:12"),
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:13"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
-						BaseNode: base("1:1", "1:12"),
+						BaseNode: base("1:1", "1:13"),
 						Expression: &ast.UnaryExpression{
-							BaseNode: base("1:1", "1:12"),
+							BaseNode: base("1:1", "1:13"),
 							Operator: ast.NotOperator,
-							Argument: &ast.LogicalExpression{
-								BaseNode: base("1:6", "1:12"),
-								Operator: ast.OrOperator,
-								Left: &ast.Identifier{
-									BaseNode: base("1:6", "1:7"),
-									Name:     "a",
-								},
-								Right: &ast.Identifier{
-									BaseNode: base("1:11", "1:12"),
-									Name:     "b",
+							Argument: &ast.ParenExpression{
+								BaseNode: base("1:5", "1:13"),
+								Expression: &ast.LogicalExpression{
+									BaseNode: base("1:6", "1:12"),
+									Operator: ast.OrOperator,
+									Left: &ast.Identifier{
+										BaseNode: base("1:6", "1:7"),
+										Name:     "a",
+									},
+									Right: &ast.Identifier{
+										BaseNode: base("1:11", "1:12"),
+										Name:     "b",
+									},
 								},
 							},
 						},
@@ -2666,23 +3180,27 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 			name: "logical operators precedence 8",
 			raw:  `not (a and b)`,
 			want: &ast.File{
-				BaseNode: base("1:1", "1:13"),
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:14"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
-						BaseNode: base("1:1", "1:13"),
+						BaseNode: base("1:1", "1:14"),
 						Expression: &ast.UnaryExpression{
-							BaseNode: base("1:1", "1:13"),
+							BaseNode: base("1:1", "1:14"),
 							Operator: ast.NotOperator,
-							Argument: &ast.LogicalExpression{
-								BaseNode: base("1:6", "1:13"),
-								Operator: ast.AndOperator,
-								Left: &ast.Identifier{
-									BaseNode: base("1:6", "1:7"),
-									Name:     "a",
-								},
-								Right: &ast.Identifier{
-									BaseNode: base("1:12", "1:13"),
-									Name:     "b",
+							Argument: &ast.ParenExpression{
+								BaseNode: base("1:5", "1:14"),
+								Expression: &ast.LogicalExpression{
+									BaseNode: base("1:6", "1:13"),
+									Operator: ast.AndOperator,
+									Left: &ast.Identifier{
+										BaseNode: base("1:6", "1:7"),
+										Name:     "a",
+									},
+									Right: &ast.Identifier{
+										BaseNode: base("1:12", "1:13"),
+										Name:     "b",
+									},
 								},
 							},
 						},
@@ -2694,23 +3212,27 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 			name: "logical operators precedence 9",
 			raw:  `(a or b) and c`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:15"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
-						BaseNode: base("1:2", "1:15"),
+						BaseNode: base("1:1", "1:15"),
 						Expression: &ast.LogicalExpression{
-							BaseNode: base("1:2", "1:15"),
+							BaseNode: base("1:1", "1:15"),
 							Operator: ast.AndOperator,
-							Left: &ast.LogicalExpression{
-								BaseNode: base("1:2", "1:8"),
-								Operator: ast.OrOperator,
-								Left: &ast.Identifier{
-									BaseNode: base("1:2", "1:3"),
-									Name:     "a",
-								},
-								Right: &ast.Identifier{
-									BaseNode: base("1:7", "1:8"),
-									Name:     "b",
+							Left: &ast.ParenExpression{
+								BaseNode: base("1:1", "1:9"),
+								Expression: &ast.LogicalExpression{
+									BaseNode: base("1:2", "1:8"),
+									Operator: ast.OrOperator,
+									Left: &ast.Identifier{
+										BaseNode: base("1:2", "1:3"),
+										Name:     "a",
+									},
+									Right: &ast.Identifier{
+										BaseNode: base("1:7", "1:8"),
+										Name:     "b",
+									},
 								},
 							},
 							Right: &ast.Identifier{
@@ -2726,27 +3248,31 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 			name: "logical operators precedence 10",
 			raw:  `a and (b or c)`,
 			want: &ast.File{
-				BaseNode: base("1:1", "1:14"),
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:15"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
-						BaseNode: base("1:1", "1:14"),
+						BaseNode: base("1:1", "1:15"),
 						Expression: &ast.LogicalExpression{
-							BaseNode: base("1:1", "1:14"),
+							BaseNode: base("1:1", "1:15"),
 							Operator: ast.AndOperator,
 							Left: &ast.Identifier{
 								BaseNode: base("1:1", "1:2"),
 								Name:     "a",
 							},
-							Right: &ast.LogicalExpression{
-								BaseNode: base("1:8", "1:14"),
-								Operator: ast.OrOperator,
-								Left: &ast.Identifier{
-									BaseNode: base("1:8", "1:9"),
-									Name:     "b",
-								},
-								Right: &ast.Identifier{
-									BaseNode: base("1:13", "1:14"),
-									Name:     "c",
+							Right: &ast.ParenExpression{
+								BaseNode: base("1:7", "1:15"),
+								Expression: &ast.LogicalExpression{
+									BaseNode: base("1:8", "1:14"),
+									Operator: ast.OrOperator,
+									Left: &ast.Identifier{
+										BaseNode: base("1:8", "1:9"),
+										Name:     "b",
+									},
+									Right: &ast.Identifier{
+										BaseNode: base("1:13", "1:14"),
+										Name:     "c",
+									},
 								},
 							},
 						},
@@ -2762,6 +3288,7 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 			raw: `not (a and b)
 (a or b) and c`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "2:15"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -2774,27 +3301,32 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 								Operator: ast.NotOperator,
 								Argument: &ast.CallExpression{
 									BaseNode: ast.BaseNode{
-										Loc: loc("1:6", "2:9"),
+										Loc: loc("1:5", "2:9"),
 										Errors: []ast.Error{
 											{Msg: `expected comma in property list, got OR ("or")`},
 										},
 									},
-									Callee: &ast.LogicalExpression{
-										BaseNode: base("1:6", "1:13"),
-										Operator: ast.AndOperator,
-										Left: &ast.Identifier{
-											BaseNode: base("1:6", "1:7"),
-											Name:     "a",
-										},
-										Right: &ast.Identifier{
-											BaseNode: base("1:12", "1:13"),
-											Name:     "b",
+									Callee: &ast.ParenExpression{
+										BaseNode: base("1:5", "1:14"),
+										Expression: &ast.LogicalExpression{
+											BaseNode: base("1:6", "1:13"),
+											Operator: ast.AndOperator,
+											Left: &ast.Identifier{
+												BaseNode: base("1:6", "1:7"),
+												Name:     "a",
+											},
+											Right: &ast.Identifier{
+												BaseNode: base("1:12", "1:13"),
+												Name:     "b",
+											},
 										},
 									},
 									Arguments: []ast.Expression{
 										&ast.ObjectExpression{
+											BaseNode: base("2:2", "2:8"),
 											Properties: []*ast.Property{
 												{
+													BaseNode: base("2:2", "2:3"),
 													Key: &ast.Identifier{
 														BaseNode: base("2:2", "2:3"),
 														Name:     "a",
@@ -2818,6 +3350,7 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 					},
 				},
 			},
+			nerrs: 2,
 		},
 		{
 			name: "arrow function called",
@@ -2825,6 +3358,7 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 			plusOne(r:5)
 			`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "2:16"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -2893,16 +3427,17 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 			name: "arrow function return map",
 			raw:  `toMap = (r) =>({r:r})`,
 			want: &ast.File{
-				BaseNode: base("1:1", "1:21"),
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:22"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
-						BaseNode: base("1:1", "1:21"),
+						BaseNode: base("1:1", "1:22"),
 						ID: &ast.Identifier{
 							BaseNode: base("1:1", "1:6"),
 							Name:     "toMap",
 						},
 						Init: &ast.FunctionExpression{
-							BaseNode: base("1:9", "1:21"),
+							BaseNode: base("1:9", "1:22"),
 							Params: []*ast.Property{
 								{
 									BaseNode: base("1:10", "1:11"),
@@ -2912,18 +3447,21 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 									},
 								},
 							},
-							Body: &ast.ObjectExpression{
-								BaseNode: base("1:16", "1:21"),
-								Properties: []*ast.Property{
-									{
-										BaseNode: base("1:17", "1:20"),
-										Key: &ast.Identifier{
-											BaseNode: base("1:17", "1:18"),
-											Name:     "r",
-										},
-										Value: &ast.Identifier{
-											BaseNode: base("1:19", "1:20"),
-											Name:     "r",
+							Body: &ast.ParenExpression{
+								BaseNode: base("1:15", "1:22"),
+								Expression: &ast.ObjectExpression{
+									BaseNode: base("1:16", "1:21"),
+									Properties: []*ast.Property{
+										{
+											BaseNode: base("1:17", "1:20"),
+											Key: &ast.Identifier{
+												BaseNode: base("1:17", "1:18"),
+												Name:     "r",
+											},
+											Value: &ast.Identifier{
+												BaseNode: base("1:19", "1:20"),
+												Name:     "r",
+											},
 										},
 									},
 								},
@@ -2937,6 +3475,7 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 			name: "arrow function with default arg",
 			raw:  `addN = (r, n=5) => r + n`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:25"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -2991,6 +3530,7 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
             plusOne(r:5) == 6 or die()
 			`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("2:13", "3:39"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -3078,6 +3618,7 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 			name: "arrow function as single expression",
 			raw:  `f = (r) => r["_measurement"] == "cpu"`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:38"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -3128,6 +3669,7 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
                 return m == "cpu"
             }`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "4:14"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -3194,6 +3736,7 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 			name: "conditional",
 			raw:  `a = if true then 0 else 1`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:26"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -3221,11 +3764,111 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 			},
 		},
 		{
+			name: "conditional with unary logical operators",
+			raw:  `a = if exists b or c < d and not e == f then not exists (g - h) else exists exists i`,
+			want: &ast.File{
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:85"),
+				Body: []ast.Statement{
+					&ast.VariableAssignment{
+						BaseNode: base("1:1", "1:85"),
+						ID: &ast.Identifier{
+							BaseNode: base("1:1", "1:2"),
+							Name:     "a",
+						},
+						Init: &ast.ConditionalExpression{
+							BaseNode: base("1:5", "1:85"),
+							Test: &ast.LogicalExpression{
+								BaseNode: base("1:8", "1:40"),
+								Operator: ast.OrOperator,
+								Left: &ast.UnaryExpression{
+									BaseNode: base("1:8", "1:16"),
+									Operator: ast.ExistsOperator,
+									Argument: &ast.Identifier{
+										BaseNode: base("1:15", "1:16"),
+										Name:     "b",
+									},
+								},
+								Right: &ast.LogicalExpression{
+									BaseNode: base("1:20", "1:40"),
+									Operator: ast.AndOperator,
+									Left: &ast.BinaryExpression{
+										BaseNode: base("1:20", "1:25"),
+										Operator: ast.LessThanOperator,
+										Left: &ast.Identifier{
+											BaseNode: base("1:20", "1:21"),
+											Name:     "c",
+										},
+										Right: &ast.Identifier{
+											BaseNode: base("1:24", "1:25"),
+											Name:     "d",
+										},
+									},
+									Right: &ast.UnaryExpression{
+										BaseNode: base("1:30", "1:40"),
+										Operator: ast.NotOperator,
+										Argument: &ast.BinaryExpression{
+											BaseNode: base("1:34", "1:40"),
+											Operator: ast.EqualOperator,
+											Left: &ast.Identifier{
+												BaseNode: base("1:34", "1:35"),
+												Name:     "e",
+											},
+											Right: &ast.Identifier{
+												BaseNode: base("1:39", "1:40"),
+												Name:     "f",
+											},
+										},
+									},
+								},
+							},
+							Consequent: &ast.UnaryExpression{
+								BaseNode: base("1:46", "1:64"),
+								Operator: ast.NotOperator,
+								Argument: &ast.UnaryExpression{
+									BaseNode: base("1:50", "1:64"),
+									Operator: ast.ExistsOperator,
+									Argument: &ast.ParenExpression{
+										BaseNode: base("1:57", "1:64"),
+										Expression: &ast.BinaryExpression{
+											BaseNode: base("1:58", "1:63"),
+											Operator: ast.SubtractionOperator,
+											Left: &ast.Identifier{
+												BaseNode: base("1:58", "1:59"),
+												Name:     "g",
+											},
+											Right: &ast.Identifier{
+												BaseNode: base("1:62", "1:63"),
+												Name:     "h",
+											},
+										},
+									},
+								},
+							},
+							Alternate: &ast.UnaryExpression{
+								BaseNode: base("1:70", "1:85"),
+								Operator: ast.ExistsOperator,
+								Argument: &ast.UnaryExpression{
+									BaseNode: base("1:77", "1:85"),
+									Operator: ast.ExistsOperator,
+									Argument: &ast.Identifier{
+										BaseNode: base("1:84", "1:85"),
+										Name:     "i",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "nested conditionals",
 			raw: `if if b < 0 then true else false
                   then if c > 0 then 30 else 60
                   else if d == 0 then 90 else 120`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "3:50"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -3307,6 +3950,7 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 			name: "from with filter with no parens",
 			raw:  `from(bucket:"telegraf/autogen").filter(fn: (r) => r["other"]=="mem" and r["this"]=="that" or r["these"]!="those")`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:114"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -3445,6 +4089,7 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 			name: "from with range",
 			raw:  `from(bucket:"telegraf/autogen")|>range(start:-1h, end:10m)`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:59"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -3535,6 +4180,7 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 			name: "from with limit",
 			raw:  `from(bucket:"telegraf/autogen")|>limit(limit:100, offset:10)`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:61"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -3613,6 +4259,7 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 						|> range(start:-4h, stop:-2h)
 						|> count()`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "3:17"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -3720,6 +4367,7 @@ k / l < m + n - o or p() <= q() or r >= s and not t =~ /a/ and u !~ /a/`,
 						|> limit(n:10)
 						|> count()`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "4:17"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -3855,6 +4503,7 @@ a = from(bucket:"dbA/autogen") |> range(start:-1h)
 b = from(bucket:"dbB/autogen") |> range(start:-1h)
 join(tables:[a,b], on:["host"], fn: (a,b) => a["_field"] + b["_field"])`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("2:1", "4:72"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -4115,6 +4764,7 @@ b = from(bucket:"Flux/autogen")
 join(tables:[a,b], on:["t1"], fn: (a,b) => (a["_field"] - b["_field"]) / b["_field"])
 `,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("2:1", "10:86"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -4438,31 +5088,34 @@ join(tables:[a,b], on:["t1"], fn: (a,b) => (a["_field"] - b["_field"]) / b["_fie
 													},
 												},
 												Body: &ast.BinaryExpression{
-													BaseNode: base("10:45", "10:85"),
+													BaseNode: base("10:44", "10:85"),
 													Operator: ast.DivisionOperator,
-													Left: &ast.BinaryExpression{
-														BaseNode: base("10:45", "10:70"),
-														Operator: ast.SubtractionOperator,
-														Left: &ast.MemberExpression{
-															BaseNode: base("10:45", "10:56"),
-															Object: &ast.Identifier{
-																BaseNode: base("10:45", "10:46"),
-																Name:     "a",
+													Left: &ast.ParenExpression{
+														BaseNode: base("10:44", "10:71"),
+														Expression: &ast.BinaryExpression{
+															BaseNode: base("10:45", "10:70"),
+															Operator: ast.SubtractionOperator,
+															Left: &ast.MemberExpression{
+																BaseNode: base("10:45", "10:56"),
+																Object: &ast.Identifier{
+																	BaseNode: base("10:45", "10:46"),
+																	Name:     "a",
+																},
+																Property: &ast.StringLiteral{
+																	BaseNode: base("10:47", "10:55"),
+																	Value:    "_field",
+																},
 															},
-															Property: &ast.StringLiteral{
-																BaseNode: base("10:47", "10:55"),
-																Value:    "_field",
-															},
-														},
-														Right: &ast.MemberExpression{
-															BaseNode: base("10:59", "10:70"),
-															Object: &ast.Identifier{
-																BaseNode: base("10:59", "10:60"),
-																Name:     "b",
-															},
-															Property: &ast.StringLiteral{
-																BaseNode: base("10:61", "10:69"),
-																Value:    "_field",
+															Right: &ast.MemberExpression{
+																BaseNode: base("10:59", "10:70"),
+																Object: &ast.Identifier{
+																	BaseNode: base("10:59", "10:60"),
+																	Name:     "b",
+																},
+																Property: &ast.StringLiteral{
+																	BaseNode: base("10:61", "10:69"),
+																	Value:    "_field",
+																},
 															},
 														},
 													},
@@ -4492,6 +5145,7 @@ join(tables:[a,b], on:["t1"], fn: (a,b) => (a["_field"] - b["_field"]) / b["_fie
 			name: "duration literal, all units",
 			raw:  `dur = 1y3mo2w1d4h1m30s1ms2µs70ns`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:34"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -4523,6 +5177,7 @@ join(tables:[a,b], on:["t1"], fn: (a,b) => (a["_field"] - b["_field"]) / b["_fie
 			name: "duration literal, months",
 			raw:  `dur = 6mo`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:10"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -4545,6 +5200,7 @@ join(tables:[a,b], on:["t1"], fn: (a,b) => (a["_field"] - b["_field"]) / b["_fie
 			name: "duration literal, milliseconds",
 			raw:  `dur = 500ms`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:12"),
 				Body: []ast.Statement{&ast.VariableAssignment{
 					BaseNode: base("1:1", "1:12"),
@@ -4566,6 +5222,7 @@ join(tables:[a,b], on:["t1"], fn: (a,b) => (a["_field"] - b["_field"]) / b["_fie
 			name: "duration literal, months, minutes, milliseconds",
 			raw:  `dur = 6mo30m500ms`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:18"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -4590,6 +5247,7 @@ join(tables:[a,b], on:["t1"], fn: (a,b) => (a["_field"] - b["_field"]) / b["_fie
 			name: "date literal in the default location",
 			raw:  `now = 2018-11-29`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:17"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -4610,6 +5268,7 @@ join(tables:[a,b], on:["t1"], fn: (a,b) => (a["_field"] - b["_field"]) / b["_fie
 			name: "date time literal",
 			raw:  `now = 2018-11-29T09:00:00Z`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:27"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -4630,6 +5289,7 @@ join(tables:[a,b], on:["t1"], fn: (a,b) => (a["_field"] - b["_field"]) / b["_fie
 			name: "date time literal with fractional seconds",
 			raw:  `now = 2018-11-29T09:00:00.100000000Z`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:37"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -4647,30 +5307,10 @@ join(tables:[a,b], on:["t1"], fn: (a,b) => (a["_field"] - b["_field"]) / b["_fie
 			},
 		},
 		{
-			name: "unary expression with member expression",
-			raw:  `not m.b`,
-			want: &ast.File{
-				BaseNode: base("1:1", "1:8"),
-				Body: []ast.Statement{
-					&ast.ExpressionStatement{
-						BaseNode: base("1:1", "1:8"),
-						Expression: &ast.UnaryExpression{
-							BaseNode: base("1:1", "1:8"),
-							Operator: ast.NotOperator,
-							Argument: &ast.MemberExpression{
-								BaseNode: base("1:5", "1:8"),
-								Object:   &ast.Identifier{BaseNode: base("1:5", "1:6"), Name: "m"},
-								Property: &ast.Identifier{BaseNode: base("1:7", "1:8"), Name: "b"},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
 			name: "function call with unbalanced braces",
 			raw:  `from() |> range() |> map(fn: (r) => { return r._value )`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:56"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -4755,11 +5395,13 @@ join(tables:[a,b], on:["t1"], fn: (a,b) => (a["_field"] - b["_field"]) / b["_fie
 					},
 				},
 			},
+			nerrs: 1,
 		},
 		{
 			name: "string with utf-8",
 			raw:  `"日本語"`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:12"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -4776,6 +5418,7 @@ join(tables:[a,b], on:["t1"], fn: (a,b) => (a["_field"] - b["_field"]) / b["_fie
 			name: "string with byte values",
 			raw:  `"\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:39"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -4795,15 +5438,41 @@ carriage return \r
 horizontal tab \t
 double quote \"
 backslash \\
+dollar sign and left brace \${
 "`,
 			want: &ast.File{
-				BaseNode: base("1:1", "6:2"),
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "7:2"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
-						BaseNode: base("1:1", "6:2"),
+						BaseNode: base("1:1", "7:2"),
 						Expression: &ast.StringLiteral{
-							BaseNode: base("1:1", "6:2"),
-							Value:    "newline \n\ncarriage return \r\nhorizontal tab \t\ndouble quote \"\nbackslash \\\n",
+							BaseNode: base("1:1", "7:2"),
+							Value:    "newline \n\ncarriage return \r\nhorizontal tab \t\ndouble quote \"\nbackslash \\\ndollar sign and left brace ${\n",
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "string interp with escapes",
+			raw:  `"string \"interpolation with ${"escapes"}\""`,
+			want: &ast.File{
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:45"),
+				Body: []ast.Statement{
+					&ast.ExpressionStatement{
+						BaseNode: base("1:1", "1:45"),
+						Expression: &ast.StringExpression{
+							BaseNode: base("1:1", "1:45"),
+							Parts: []ast.StringExpressionPart{
+								&ast.TextPart{BaseNode: base("1:2", "1:30"), Value: `string "interpolation with `},
+								&ast.InterpolatedPart{
+									BaseNode:   base("1:30", "1:42"),
+									Expression: &ast.StringLiteral{BaseNode: base("1:32", "1:41"), Value: "escapes"},
+								},
+								&ast.TextPart{BaseNode: base("1:42", "1:44"), Value: `"`},
+							},
 						},
 					},
 				},
@@ -4817,6 +5486,7 @@ multiline
 string"
 `,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "4:8"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -4833,6 +5503,7 @@ string"
 			name: "illegal statement token",
 			raw:  `@ ident`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:8"),
 				Body: []ast.Statement{
 					&ast.BadStatement{
@@ -4853,111 +5524,136 @@ string"
 					},
 				},
 			},
+			nerrs: 1,
 		},
 		{
 			name: "multiple idents in parens",
 			raw:  `(a b)`,
 			want: &ast.File{
-				// TODO(jsternberg): Parens aren't recorded correctly
-				// in the source and are mostly ignored.
-				BaseNode: base("1:1", "1:5"),
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:6"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
-						BaseNode: base("1:2", "1:5"),
-						Expression: &ast.BinaryExpression{
-							BaseNode: ast.BaseNode{
-								Loc: loc("1:2", "1:5"),
-								Errors: []ast.Error{
-									{Msg: "expected an operator between two expressions"},
+						BaseNode: base("1:1", "1:6"),
+						Expression: &ast.ParenExpression{
+							BaseNode: base("1:1", "1:6"),
+							Expression: &ast.BinaryExpression{
+								BaseNode: ast.BaseNode{
+									Loc: loc("1:2", "1:5"),
+									Errors: []ast.Error{
+										{Msg: "expected an operator between two expressions"},
+									},
 								},
-							},
-							Left: &ast.Identifier{
-								BaseNode: base("1:2", "1:3"),
-								Name:     "a",
-							},
-							Right: &ast.Identifier{
-								BaseNode: base("1:4", "1:5"),
-								Name:     "b",
+								Left: &ast.Identifier{
+									BaseNode: base("1:2", "1:3"),
+									Name:     "a",
+								},
+								Right: &ast.Identifier{
+									BaseNode: base("1:4", "1:5"),
+									Name:     "b",
+								},
 							},
 						},
 					},
 				},
 			},
+			nerrs: 1,
 		},
 		{
 			name: "missing left hand side",
 			raw:  `(*b)`,
 			want: &ast.File{
-				// TODO(jsternberg): Parens aren't recorded correctly
-				// in the source and are mostly ignored.
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:5"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
-						Expression: &ast.BinaryExpression{
-							BaseNode: ast.BaseNode{
-								Errors: []ast.Error{
-									{Msg: "missing left hand side of expression"},
+						BaseNode: base("1:1", "1:5"),
+						Expression: &ast.ParenExpression{
+							BaseNode: base("1:1", "1:5"),
+							Expression: &ast.BinaryExpression{
+								Left: nil,
+								// TODO(affo): when one operand in the BinaryExpression is nil, the location is not reported.
+								//  This is because of locStart/locEnd implementation.
+								BaseNode: ast.BaseNode{
+									Errors: []ast.Error{
+										{Msg: "missing left hand side of expression"},
+									},
 								},
-							},
-							Operator: ast.MultiplicationOperator,
-							Right: &ast.Identifier{
-								BaseNode: base("1:3", "1:4"),
-								Name:     "b",
+								Operator: ast.MultiplicationOperator,
+								Right: &ast.Identifier{
+									BaseNode: base("1:3", "1:4"),
+									Name:     "b",
+								},
 							},
 						},
 					},
 				},
 			},
+			nerrs: 1,
 		},
 		{
 			name: "missing right hand side",
 			raw:  `(a*)`,
 			want: &ast.File{
-				// TODO(jsternberg): Parens aren't recorded correctly
-				// in the source and are mostly ignored.
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:5"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
-						Expression: &ast.BinaryExpression{
-							BaseNode: ast.BaseNode{
-								Errors: []ast.Error{
-									{Msg: "missing right hand side of expression"},
+						BaseNode: base("1:1", "1:5"),
+						Expression: &ast.ParenExpression{
+							BaseNode: base("1:1", "1:5"),
+							Expression: &ast.BinaryExpression{
+								Right: nil,
+								BaseNode: ast.BaseNode{
+									Loc: loc("1:2", "1:5"),
+									Errors: []ast.Error{
+										{Msg: "missing right hand side of expression"},
+									},
 								},
-							},
-							Operator: ast.MultiplicationOperator,
-							Left: &ast.Identifier{
-								BaseNode: base("1:2", "1:3"),
-								Name:     "a",
+								Operator: ast.MultiplicationOperator,
+								Left: &ast.Identifier{
+									BaseNode: base("1:2", "1:3"),
+									Name:     "a",
+								},
 							},
 						},
 					},
 				},
 			},
+			nerrs: 1,
 		},
 		{
 			name: "illegal expression",
 			raw:  `(@)`,
 			want: &ast.File{
-				// TODO(jsternberg): Parens aren't recorded correctly
-				// in the source and are mostly ignored.
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:4"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
-						BaseNode: ast.BaseNode{
-							Errors: []ast.Error{
-								{Msg: "invalid expression @1:2-1:3: @"},
-							},
-						},
+						BaseNode: base("1:1", "1:4"),
 						// TODO(jsternberg): This should be a BadExpression.
 						// We are adding this though to ensure that
 						// parseExpressionWhile does not end up in an infinite
 						// loop.
-						Expression: nil,
+						Expression: &ast.ParenExpression{
+							BaseNode: ast.BaseNode{
+								Loc: loc("1:1", "1:4"),
+								Errors: []ast.Error{
+									{Msg: "invalid expression @1:2-1:3: @"},
+								},
+							},
+							Expression: nil,
+						},
 					},
 				},
 			},
+			nerrs: 1,
 		},
 		{
 			name: "missing arrow in function expression",
 			raw:  `(a, b) a + b`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
 						Expression: &ast.FunctionExpression{
@@ -4989,11 +5685,13 @@ string"
 					},
 				},
 			},
+			nerrs: 4,
 		},
 		{
 			name: "property list missing property",
 			raw:  `o = {a: "a",, b: 7}`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:20"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -5038,11 +5736,13 @@ string"
 					},
 				},
 			},
+			nerrs: 1,
 		},
 		{
 			name: "property list missing key",
 			raw:  `o = {: "a"}`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:12"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -5069,11 +5769,13 @@ string"
 					},
 				},
 			},
+			nerrs: 1,
 		},
 		{
 			name: "property list missing value",
 			raw:  `o = {a:}`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:9"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -5099,6 +5801,7 @@ string"
 					},
 				},
 			},
+			nerrs: 1,
 		},
 		{
 			// Because of the missing comma between the properties,
@@ -5107,6 +5810,7 @@ string"
 			name: "property list missing comma",
 			raw:  `o = {a: "a" b: 30}`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:19"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -5117,8 +5821,7 @@ string"
 						},
 						Init: &ast.ObjectExpression{
 							BaseNode: ast.BaseNode{
-								Loc:    loc("1:5", "1:19"),
-								Errors: []ast.Error{{Msg: `expected comma in property list, got COLON (":")`}},
+								Loc: loc("1:5", "1:19"),
 							},
 							Properties: []*ast.Property{
 								{
@@ -5147,8 +5850,11 @@ string"
 										Errors: []ast.Error{{Msg: "missing property key"}},
 									},
 									Value: &ast.IntegerLiteral{
-										BaseNode: base("1:16", "1:18"),
-										Value:    30,
+										BaseNode: ast.BaseNode{
+											Loc:    loc("1:16", "1:18"),
+											Errors: []ast.Error{{Msg: `expected comma in property list, got COLON (":")`}},
+										},
+										Value: 30,
 									},
 								},
 							},
@@ -5156,12 +5862,14 @@ string"
 					},
 				},
 			},
+			nerrs: 3,
 		},
 		{
 			// A trailing comma is acceptable
 			name: "property list trailing comma",
 			raw:  `o = {a: "a",}`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:14"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -5194,6 +5902,7 @@ string"
 			name: "property list bad property",
 			raw:  `o = {a: "a", 30, b: 7}`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:23"),
 				Body: []ast.Statement{
 					&ast.VariableAssignment{
@@ -5240,6 +5949,7 @@ string"
 					},
 				},
 			},
+			nerrs: 1,
 		},
 		// TODO(jsternberg): This should fill in error nodes.
 		// The current behavior is non-sensical.
@@ -5247,6 +5957,7 @@ string"
 			name: "invalid expression in array",
 			raw:  `['a']`,
 			want: &ast.File{
+				Metadata: "parser-type=go",
 				BaseNode: base("1:1", "1:6"),
 				Body: []ast.Statement{
 					&ast.ExpressionStatement{
@@ -5263,6 +5974,28 @@ string"
 					},
 				},
 			},
+		},
+		{
+			name: "integer literal overflow",
+			raw:  `100000000000000000000000000000`,
+			want: &ast.File{
+				Metadata: "parser-type=go",
+				BaseNode: base("1:1", "1:31"),
+				Body: []ast.Statement{
+					&ast.ExpressionStatement{
+						BaseNode: base("1:1", "1:31"),
+						Expression: &ast.IntegerLiteral{
+							BaseNode: ast.BaseNode{
+								Loc: loc("1:1", "1:31"),
+								Errors: []ast.Error{
+									{Msg: `invalid integer literal "100000000000000000000000000000": value out of range`},
+								},
+							},
+						},
+					},
+				},
+			},
+			nerrs: 1,
 		},
 	} {
 		runFn(tt.name, func(tb testing.TB) {
@@ -5285,6 +6018,7 @@ string"
 			result := parser.ParseFile(f, []byte(tt.raw))
 
 			want := tt.want.Copy()
+
 			ast.Walk(ast.CreateVisitor(func(node ast.Node) {
 				v := reflect.ValueOf(node)
 				loc := v.Elem().FieldByName("Loc")
@@ -5297,7 +6031,9 @@ string"
 					l.Source = source(tt.raw, l)
 				}
 			}), want)
-			ast.Check(result)
+			if nerrsGot := ast.Check(result); tt.nerrs != nerrsGot {
+				tb.Errorf("unexpected number of errors -want/+got: %v/%v", tt.nerrs, nerrsGot)
+			}
 			if got, want := result, want; !cmp.Equal(want, got, CompareOptions...) {
 				tb.Errorf("unexpected statement -want/+got\n%s", cmp.Diff(want, got, CompareOptions...))
 			}
@@ -5321,9 +6057,10 @@ func loc(start, end string) *ast.SourceLocation {
 	}
 }
 
-func base(start, end string) ast.BaseNode {
+func base(start, end string, errors ...ast.Error) ast.BaseNode {
 	return ast.BaseNode{
-		Loc: loc(start, end),
+		Loc:    loc(start, end),
+		Errors: errors,
 	}
 }
 

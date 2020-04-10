@@ -1,11 +1,16 @@
 package universe
 
 import (
-	"fmt"
+	"context"
 	"regexp"
 	"strconv"
+	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/influxdata/flux"
+	"github.com/influxdata/flux/codes"
+	"github.com/influxdata/flux/internal/errors"
 	"github.com/influxdata/flux/parser"
 	"github.com/influxdata/flux/semantic"
 	"github.com/influxdata/flux/values"
@@ -19,13 +24,14 @@ func init() {
 	flux.RegisterPackageValue("universe", "bool", &boolConv{})
 	flux.RegisterPackageValue("universe", "time", &timeConv{})
 	flux.RegisterPackageValue("universe", "duration", &durationConv{})
+	flux.RegisterPackageValue("universe", "bytes", bytes)
 }
 
 const (
 	conversionArg = "v"
 )
 
-var errMissingArg = fmt.Errorf("missing argument %q", conversionArg)
+var errMissingArg = errors.Newf(codes.Invalid, "missing argument %q", conversionArg)
 
 type stringConv struct{}
 
@@ -46,6 +52,9 @@ func (c *stringConv) IsNull() bool {
 }
 func (c *stringConv) Str() string {
 	panic(values.UnexpectedKind(semantic.Function, semantic.String))
+}
+func (c *stringConv) Bytes() []byte {
+	panic(values.UnexpectedKind(semantic.Function, semantic.Bytes))
 }
 func (c *stringConv) Int() int64 {
 	panic(values.UnexpectedKind(semantic.Function, semantic.Int))
@@ -85,11 +94,13 @@ func (c *stringConv) HasSideEffect() bool {
 	return false
 }
 
-func (c *stringConv) Call(args values.Object) (values.Value, error) {
+func (c *stringConv) Call(ctx context.Context, args values.Object) (values.Value, error) {
 	var str string
 	v, ok := args.Get(conversionArg)
 	if !ok {
 		return nil, errMissingArg
+	} else if v.IsNull() {
+		return values.Null, nil
 	}
 	switch v.Type().Nature() {
 	case semantic.String:
@@ -106,8 +117,21 @@ func (c *stringConv) Call(args values.Object) (values.Value, error) {
 		str = v.Time().String()
 	case semantic.Duration:
 		str = v.Duration().String()
+	case semantic.Bytes:
+		var sb strings.Builder
+		var vB = v.Bytes()
+		for len(vB) > 0 {
+			r, size := utf8.DecodeRune(vB)
+			if r == utf8.RuneError && size == 1 {
+				return nil, errors.Newf(codes.Invalid, "invalid utf8 response")
+			}
+			vB = vB[size:]
+
+			sb.WriteRune(r)
+		}
+		str = sb.String()
 	default:
-		return nil, fmt.Errorf("cannot convert %v to string", v.Type())
+		return nil, errors.Newf(codes.Invalid, "cannot convert %v to string", v.Type())
 	}
 	return values.NewString(str), nil
 }
@@ -129,6 +153,9 @@ func (c *intConv) IsNull() bool {
 }
 func (c *intConv) Str() string {
 	panic(values.UnexpectedKind(semantic.Function, semantic.String))
+}
+func (c *intConv) Bytes() []byte {
+	panic(values.UnexpectedKind(semantic.Function, semantic.Bytes))
 }
 func (c *intConv) Int() int64 {
 	panic(values.UnexpectedKind(semantic.Function, semantic.Int))
@@ -168,11 +195,13 @@ func (c *intConv) HasSideEffect() bool {
 	return false
 }
 
-func (c *intConv) Call(args values.Object) (values.Value, error) {
+func (c *intConv) Call(ctx context.Context, args values.Object) (values.Value, error) {
 	var i int64
 	v, ok := args.Get(conversionArg)
 	if !ok {
 		return nil, errMissingArg
+	} else if v.IsNull() {
+		return values.Null, nil
 	}
 	switch v.Type().Nature() {
 	case semantic.String:
@@ -196,9 +225,9 @@ func (c *intConv) Call(args values.Object) (values.Value, error) {
 	case semantic.Time:
 		i = int64(v.Time())
 	case semantic.Duration:
-		i = int64(v.Duration())
+		i = int64(v.Duration().Duration())
 	default:
-		return nil, fmt.Errorf("cannot convert %v to int", v.Type())
+		return nil, errors.Newf(codes.Invalid, "cannot convert %v to int", v.Type())
 	}
 	return values.NewInt(i), nil
 }
@@ -220,6 +249,9 @@ func (c *uintConv) IsNull() bool {
 }
 func (c *uintConv) Str() string {
 	panic(values.UnexpectedKind(semantic.Function, semantic.String))
+}
+func (c *uintConv) Bytes() []byte {
+	panic(values.UnexpectedKind(semantic.Function, semantic.Bytes))
 }
 func (c *uintConv) Int() int64 {
 	panic(values.UnexpectedKind(semantic.Function, semantic.Int))
@@ -259,11 +291,13 @@ func (c *uintConv) HasSideEffect() bool {
 	return false
 }
 
-func (c *uintConv) Call(args values.Object) (values.Value, error) {
+func (c *uintConv) Call(ctx context.Context, args values.Object) (values.Value, error) {
 	var i uint64
 	v, ok := args.Get(conversionArg)
 	if !ok {
 		return nil, errMissingArg
+	} else if v.IsNull() {
+		return values.Null, nil
 	}
 	switch v.Type().Nature() {
 	case semantic.String:
@@ -287,9 +321,9 @@ func (c *uintConv) Call(args values.Object) (values.Value, error) {
 	case semantic.Time:
 		i = uint64(v.Time())
 	case semantic.Duration:
-		i = uint64(v.Duration())
+		i = uint64(v.Duration().Duration())
 	default:
-		return nil, fmt.Errorf("cannot convert %v to uint", v.Type())
+		return nil, errors.Newf(codes.Invalid, "cannot convert %v to uint", v.Type())
 	}
 	return values.NewUInt(i), nil
 }
@@ -311,6 +345,9 @@ func (c *floatConv) IsNull() bool {
 }
 func (c *floatConv) Str() string {
 	panic(values.UnexpectedKind(semantic.Function, semantic.String))
+}
+func (c *floatConv) Bytes() []byte {
+	panic(values.UnexpectedKind(semantic.Function, semantic.Bytes))
 }
 func (c *floatConv) Int() int64 {
 	panic(values.UnexpectedKind(semantic.Function, semantic.Int))
@@ -350,11 +387,13 @@ func (c *floatConv) HasSideEffect() bool {
 	return false
 }
 
-func (c *floatConv) Call(args values.Object) (values.Value, error) {
+func (c *floatConv) Call(ctx context.Context, args values.Object) (values.Value, error) {
 	var float float64
 	v, ok := args.Get(conversionArg)
 	if !ok {
 		return nil, errMissingArg
+	} else if v.IsNull() {
+		return values.Null, nil
 	}
 	switch v.Type().Nature() {
 	case semantic.String:
@@ -376,7 +415,7 @@ func (c *floatConv) Call(args values.Object) (values.Value, error) {
 			float = 0
 		}
 	default:
-		return nil, fmt.Errorf("cannot convert %v to float", v.Type())
+		return nil, errors.Newf(codes.Invalid, "cannot convert %v to float", v.Type())
 	}
 	return values.NewFloat(float), nil
 }
@@ -398,6 +437,9 @@ func (c *boolConv) IsNull() bool {
 }
 func (c *boolConv) Str() string {
 	panic(values.UnexpectedKind(semantic.Function, semantic.String))
+}
+func (c *boolConv) Bytes() []byte {
+	panic(values.UnexpectedKind(semantic.Function, semantic.Bytes))
 }
 func (c *boolConv) Int() int64 {
 	panic(values.UnexpectedKind(semantic.Function, semantic.Int))
@@ -437,11 +479,13 @@ func (c boolConv) HasSideEffect() bool {
 	return false
 }
 
-func (c *boolConv) Call(args values.Object) (values.Value, error) {
+func (c *boolConv) Call(ctx context.Context, args values.Object) (values.Value, error) {
 	var b bool
 	v, ok := args.Get(conversionArg)
 	if !ok {
 		return nil, errMissingArg
+	} else if v.IsNull() {
+		return values.Null, nil
 	}
 	switch v.Type().Nature() {
 	case semantic.String:
@@ -451,39 +495,39 @@ func (c *boolConv) Call(args values.Object) (values.Value, error) {
 		case "false":
 			b = false
 		default:
-			return nil, fmt.Errorf("cannot convert string %q to bool", s)
+			return nil, errors.Newf(codes.Invalid, "cannot convert string %q to bool", s)
 		}
 	case semantic.Int:
 		switch n := v.Int(); n {
 		case 0:
-			b = true
-		case 1:
 			b = false
+		case 1:
+			b = true
 		default:
-			return nil, fmt.Errorf("cannot convert int %d to bool, must be 0 or 1", n)
+			return nil, errors.Newf(codes.Invalid, "cannot convert int %d to bool, must be 0 or 1", n)
 		}
 	case semantic.UInt:
 		switch n := v.UInt(); n {
 		case 0:
-			b = true
-		case 1:
 			b = false
+		case 1:
+			b = true
 		default:
-			return nil, fmt.Errorf("cannot convert uint %d to bool, must be 0 or 1", n)
+			return nil, errors.Newf(codes.Invalid, "cannot convert uint %d to bool, must be 0 or 1", n)
 		}
 	case semantic.Float:
 		switch n := v.Float(); n {
 		case 0:
-			b = true
-		case 1:
 			b = false
+		case 1:
+			b = true
 		default:
-			return nil, fmt.Errorf("cannot convert float %f to bool, must be 0 or 1", n)
+			return nil, errors.Newf(codes.Invalid, "cannot convert float %f to bool, must be 0 or 1", n)
 		}
 	case semantic.Bool:
 		b = v.Bool()
 	default:
-		return nil, fmt.Errorf("cannot convert %v to float", v.Type())
+		return nil, errors.Newf(codes.Invalid, "cannot convert %v to bool", v.Type())
 	}
 	return values.NewBool(b), nil
 }
@@ -505,6 +549,9 @@ func (c *timeConv) IsNull() bool {
 }
 func (c *timeConv) Str() string {
 	panic(values.UnexpectedKind(semantic.Function, semantic.String))
+}
+func (c *timeConv) Bytes() []byte {
+	panic(values.UnexpectedKind(semantic.Function, semantic.Bytes))
 }
 func (c *timeConv) Int() int64 {
 	panic(values.UnexpectedKind(semantic.Function, semantic.Int))
@@ -544,11 +591,13 @@ func (c timeConv) HasSideEffect() bool {
 	return false
 }
 
-func (c *timeConv) Call(args values.Object) (values.Value, error) {
+func (c *timeConv) Call(ctx context.Context, args values.Object) (values.Value, error) {
 	var t values.Time
 	v, ok := args.Get(conversionArg)
 	if !ok {
 		return nil, errMissingArg
+	} else if v.IsNull() {
+		return values.Null, nil
 	}
 	switch v.Type().Nature() {
 	case semantic.String:
@@ -561,8 +610,10 @@ func (c *timeConv) Call(args values.Object) (values.Value, error) {
 		t = values.Time(v.Int())
 	case semantic.UInt:
 		t = values.Time(v.UInt())
+	case semantic.Time:
+		t = v.Time()
 	default:
-		return nil, fmt.Errorf("cannot convert %v to time", v.Type())
+		return nil, errors.Newf(codes.Invalid, "cannot convert %v to time", v.Type())
 	}
 	return values.NewTime(t), nil
 }
@@ -584,6 +635,9 @@ func (c *durationConv) IsNull() bool {
 }
 func (c *durationConv) Str() string {
 	panic(values.UnexpectedKind(semantic.Function, semantic.String))
+}
+func (c *durationConv) Bytes() []byte {
+	panic(values.UnexpectedKind(semantic.Function, semantic.Bytes))
 }
 func (c *durationConv) Int() int64 {
 	panic(values.UnexpectedKind(semantic.Function, semantic.Int))
@@ -623,11 +677,13 @@ func (c durationConv) HasSideEffect() bool {
 	return false
 }
 
-func (c *durationConv) Call(args values.Object) (values.Value, error) {
+func (c *durationConv) Call(ctx context.Context, args values.Object) (values.Value, error) {
 	var d values.Duration
 	v, ok := args.Get(conversionArg)
 	if !ok {
 		return nil, errMissingArg
+	} else if v.IsNull() {
+		return values.Null, nil
 	}
 	switch v.Type().Nature() {
 	case semantic.String:
@@ -637,11 +693,37 @@ func (c *durationConv) Call(args values.Object) (values.Value, error) {
 		}
 		d = n
 	case semantic.Int:
-		d = values.Duration(v.Int())
+		d = values.ConvertDuration(time.Duration(v.Int()))
 	case semantic.UInt:
-		d = values.Duration(v.UInt())
+		d = values.ConvertDuration(time.Duration(v.UInt()))
+	case semantic.Duration:
+		d = v.Duration()
 	default:
-		return nil, fmt.Errorf("cannot convert %v to duration", v.Type())
+		return nil, errors.Newf(codes.Invalid, "cannot convert %v to duration", v.Type())
 	}
 	return values.NewDuration(d), nil
 }
+
+var bytes = values.NewFunction(
+	"bytes",
+	semantic.NewFunctionPolyType(semantic.FunctionPolySignature{
+		Parameters: map[string]semantic.PolyType{
+			conversionArg: semantic.Tvar(1),
+		},
+		Required: []string{conversionArg},
+		Return:   semantic.Bytes,
+	}),
+	func(ctx context.Context, args values.Object) (values.Value, error) {
+		v, ok := args.Get(conversionArg)
+		if !ok {
+			return nil, errMissingArg
+		}
+		switch v.Type().Nature() {
+		case semantic.String:
+			return values.NewBytes([]byte(v.Str())), nil
+		default:
+			return nil, errors.Newf(codes.Invalid, "cannot convert %v to bytes", v.Type())
+		}
+	},
+	false,
+)

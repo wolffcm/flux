@@ -1,7 +1,6 @@
 package execute
 
 import (
-	"errors"
 	"fmt"
 	"sort"
 	"sync/atomic"
@@ -10,6 +9,8 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/influxdata/flux"
 	"github.com/influxdata/flux/arrow"
+	"github.com/influxdata/flux/codes"
+	"github.com/influxdata/flux/internal/errors"
 	"github.com/influxdata/flux/memory"
 	"github.com/influxdata/flux/plan"
 	"github.com/influxdata/flux/semantic"
@@ -36,43 +37,102 @@ func GroupKeyForRowOn(i int, cr flux.ColReader, on map[string]bool) flux.GroupKe
 	return NewGroupKey(cols, vs)
 }
 
-// OneTimeTable is a Table that permits reading data only once.
-// Specifically the ValueIterator may only be consumed once from any of the columns.
-type OneTimeTable interface {
-	flux.Table
-	onetime()
+// tableBuffer maintains a buffer of the data within a table.
+// It is created by reading a table and using Retain to retain
+// a reference to each ColReader that is returned.
+//
+// This implements the flux.BufferedTable interface.
+type tableBuffer struct {
+	key     flux.GroupKey
+	colMeta []flux.ColMeta
+	i       int
+	buffers []flux.ColReader
 }
 
-// CacheOneTimeTable returns a table that can be read multiple times.
-// If the table is not a OneTimeTable it is returned directly.
-// Otherwise its contents are read into a new table.
-func CacheOneTimeTable(t flux.Table, a *memory.Allocator) (flux.Table, error) {
-	_, ok := t.(OneTimeTable)
-	if !ok {
-		return t, nil
-	}
-	return CopyTable(t, a)
+func (tb *tableBuffer) Key() flux.GroupKey {
+	return tb.key
 }
 
-// CopyTable returns a copy of the table and is OneTimeTable safe.
-func CopyTable(t flux.Table, a *memory.Allocator) (flux.Table, error) {
-	builder := NewColListTableBuilder(t.Key(), a)
+func (tb *tableBuffer) Cols() []flux.ColMeta {
+	return tb.colMeta
+}
 
-	cols := t.Cols()
-	colMap := make([]int, len(cols))
-	for j, c := range cols {
-		colMap[j] = j
-		if _, err := builder.AddCol(c); err != nil {
-			return nil, err
+func (tb *tableBuffer) Do(f func(flux.ColReader) error) error {
+	defer tb.Done()
+	for ; tb.i < len(tb.buffers); tb.i++ {
+		b := tb.buffers[tb.i]
+		if err := f(b); err != nil {
+			return err
 		}
+		b.Release()
+	}
+	return nil
+}
+
+func (tb *tableBuffer) Done() {
+	for ; tb.i < len(tb.buffers); tb.i++ {
+		tb.buffers[tb.i].Release()
+	}
+}
+
+func (tb *tableBuffer) Empty() bool {
+	return len(tb.buffers) == 0
+}
+
+func (tb *tableBuffer) Buffer(i int) flux.ColReader {
+	return tb.buffers[i]
+}
+
+func (tb *tableBuffer) BufferN() int {
+	return len(tb.buffers)
+}
+
+func (tb *tableBuffer) Copy() flux.BufferedTable {
+	for i := tb.i; i < len(tb.buffers); i++ {
+		tb.buffers[i].Retain()
+	}
+	return &tableBuffer{
+		key:     tb.key,
+		colMeta: tb.colMeta,
+		i:       tb.i,
+		buffers: tb.buffers,
+	}
+}
+
+// CopyTable returns a buffered copy of the table and consumes the
+// input table. If the input table is already buffered, it "consumes"
+// the input and returns the same table.
+//
+// The buffered table can then be copied additional times using the
+// BufferedTable.Copy method.
+//
+// This method should be used sparingly if at all. It will retain
+// each of the buffers of data coming out of a table so the entire
+// table is materialized in memory. For large datasets, this could
+// potentially cause a problem. The allocator is meant to catch when
+// this happens and prevent it.
+func CopyTable(t flux.Table) (flux.BufferedTable, error) {
+	if tbl, ok := t.(flux.BufferedTable); ok {
+		return tbl, nil
 	}
 
-	if err := AppendMappedTable(t, builder, colMap); err != nil {
+	tbl := tableBuffer{
+		key:     t.Key(),
+		colMeta: t.Cols(),
+	}
+	if t.Empty() {
+		return &tbl, nil
+	}
+
+	if err := t.Do(func(cr flux.ColReader) error {
+		cr.Retain()
+		tbl.buffers = append(tbl.buffers, cr)
+		return nil
+	}); err != nil {
+		tbl.Done()
 		return nil, err
 	}
-	// ColListTableBuilders do not error
-	nb, _ := builder.Table()
-	return nb, nil
+	return &tbl, nil
 }
 
 // AddTableCols adds the columns of b onto builder.
@@ -165,7 +225,7 @@ func AppendTable(t flux.Table, builder TableBuilder) error {
 // The colMap is a map of builder column index to cr column index.
 func AppendMappedCols(cr flux.ColReader, builder TableBuilder, colMap []int) error {
 	if len(colMap) != len(builder.Cols()) {
-		return errors.New("AppendMappedCols: colMap must have an entry for each table builder column")
+		return errors.New(codes.Internal, "AppendMappedCols: colMap must have an entry for each table builder column")
 	}
 	for j := range builder.Cols() {
 		if colMap[j] >= 0 {
@@ -192,10 +252,10 @@ func AppendCols(cr flux.ColReader, builder TableBuilder) error {
 // The indexes bj and cj are builder and col reader indexes respectively.
 func AppendCol(bj, cj int, cr flux.ColReader, builder TableBuilder) error {
 	if cj < 0 || cj > len(cr.Cols()) {
-		return errors.New("AppendCol column reader index out of bounds")
+		return errors.New(codes.Internal, "AppendCol column reader index out of bounds")
 	}
 	if bj < 0 || bj > len(builder.Cols()) {
-		return errors.New("AppendCol builder index out of bounds")
+		return errors.New(codes.Internal, "AppendCol builder index out of bounds")
 	}
 	c := cr.Cols()[cj]
 
@@ -221,7 +281,7 @@ func AppendCol(bj, cj int, cr flux.ColReader, builder TableBuilder) error {
 // AppendRecord appends the record from cr onto builder assuming matching columns.
 func AppendRecord(i int, cr flux.ColReader, builder TableBuilder) error {
 	if !BuilderColsMatchReader(builder, cr) {
-		return errors.New("AppendRecord column schema mismatch")
+		return errors.New(codes.Internal, "AppendRecord column schema mismatch")
 	}
 	for j := range builder.Cols() {
 		if err := builder.AppendValue(j, ValueForRow(cr, i, j)); err != nil {
@@ -235,7 +295,7 @@ func AppendRecord(i int, cr flux.ColReader, builder TableBuilder) error {
 // if an entry in the colMap indicates a mismatched column, the column is created with null values
 func AppendMappedRecordWithNulls(i int, cr flux.ColReader, builder TableBuilder, colMap []int) error {
 	if len(colMap) != len(builder.Cols()) {
-		return errors.New("AppendMappedRecordWithNulls: colMap must have an entry for each table builder column")
+		return errors.New(codes.Internal, "AppendMappedRecordWithNulls: colMap must have an entry for each table builder column")
 	}
 	for j := range builder.Cols() {
 		var val values.Value
@@ -345,23 +405,24 @@ func colsMatch(left, right []flux.ColMeta) bool {
 	return true
 }
 
-// ColMap writes a mapping of builder index to column reader index into colMap.
+// ColMap writes a mapping of builder index to cols index into colMap.
 // When colMap does not have enough capacity a new colMap is allocated.
 // The colMap is always returned
-func ColMap(colMap []int, builder TableBuilder, cr flux.ColReader) []int {
+func ColMap(colMap []int, builder TableBuilder, cols []flux.ColMeta) []int {
 	l := len(builder.Cols())
 	if cap(colMap) < l {
 		colMap = make([]int, len(builder.Cols()))
 	} else {
 		colMap = colMap[:l]
 	}
-	cols := cr.Cols()
 	for j, c := range builder.Cols() {
 		colMap[j] = ColIdx(c.Label, cols)
 	}
 	return colMap
 }
 
+// AppendKeyValues appends the key values to the right columns in the builder.
+// The builder is expected to contain the key columns.
 func AppendKeyValues(key flux.GroupKey, builder TableBuilder) error {
 	for j, c := range key.Cols() {
 		idx := ColIdx(c.Label, builder.Cols())
@@ -371,6 +432,30 @@ func AppendKeyValues(key flux.GroupKey, builder TableBuilder) error {
 
 		if err := builder.AppendValue(idx, key.Value(j)); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// AppendKeyValuesN runs AppendKeyValues `n` times.
+// This is different from
+// ```
+// for i := 0; i < n; i++ {
+//   AppendKeyValues(key, builder)
+// }
+// ```
+// Because it saves the overhead of calculating the column mapping `n` times.
+func AppendKeyValuesN(key flux.GroupKey, builder TableBuilder, n int) error {
+	for j, c := range key.Cols() {
+		idx := ColIdx(c.Label, builder.Cols())
+		if idx < 0 {
+			return fmt.Errorf("group key column %s not found in output table", c.Label)
+		}
+
+		for i := 0; i < n; i++ {
+			if err := builder.AppendValue(idx, key.Value(j)); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -498,8 +583,11 @@ type TableBuilder interface {
 	// Sort the rows of the by the values of the columns in the order listed.
 	Sort(cols []string, desc bool)
 
-	// Clear removes all rows, while preserving the column meta data.
+	// ClearData removes all rows, while preserving the column meta data.
 	ClearData()
+
+	// Release releases any extraneous memory that has been retained.
+	Release()
 
 	// Table returns the table that has been built.
 	// Further modifications of the builder will not effect the returned table.
@@ -1184,17 +1272,21 @@ func (b *ColListTableBuilder) GetRow(row int) values.Object {
 }
 
 func (b *ColListTableBuilder) Table() (flux.Table, error) {
-	// Create copy in mutable state
-	cols := make([]column, len(b.cols))
-	for i, cb := range b.cols {
-		cols[i] = cb.Copy()
+	t := &ColListTable{
+		key:      b.key,
+		colMeta:  b.colMeta,
+		nrows:    b.nrows,
+		refCount: 1,
 	}
-	return &ColListTable{
-		key:     b.key,
-		colMeta: b.colMeta,
-		cols:    cols,
-		nrows:   b.nrows,
-	}, nil
+
+	if t.nrows > 0 {
+		// Create copy in mutable state
+		t.cols = make([]column, len(b.cols))
+		for i, cb := range b.cols {
+			t.cols[i] = cb.Copy()
+		}
+	}
+	return t, nil
 }
 
 // SliceColumns iterates over each column of b and re-slices them to the range
@@ -1245,6 +1337,13 @@ func (b *ColListTableBuilder) ClearData() {
 	b.nrows = 0
 }
 
+func (b *ColListTableBuilder) Release() {
+	for _, c := range b.cols {
+		c.Release()
+	}
+	b.nrows = 0
+}
+
 func (b *ColListTableBuilder) Sort(cols []string, desc bool) {
 	colIdxs := make([]int, 0, len(cols))
 	for _, label := range cols {
@@ -1268,6 +1367,7 @@ type ColListTable struct {
 	cols    []column
 	nrows   int
 
+	used     int32
 	refCount int32
 }
 
@@ -1279,6 +1379,9 @@ func (t *ColListTable) RefCount(n int) {
 		}
 	}
 }
+
+func (t *ColListTable) Retain()  { t.RefCount(1) }
+func (t *ColListTable) Release() { t.RefCount(-1) }
 
 func (t *ColListTable) Key() flux.GroupKey {
 	return t.key
@@ -1298,7 +1401,21 @@ func (t *ColListTable) Len() int {
 }
 
 func (t *ColListTable) Do(f func(flux.ColReader) error) error {
-	return f(t)
+	if !atomic.CompareAndSwapInt32(&t.used, 0, 1) {
+		return errors.New(codes.Internal, "table already read")
+	}
+	var err error
+	if t.nrows > 0 {
+		err = f(t)
+		t.Release()
+	}
+	return err
+}
+
+func (t *ColListTable) Done() {
+	if atomic.CompareAndSwapInt32(&t.used, 0, 1) {
+		t.Release()
+	}
 }
 
 func (t *ColListTable) Bools(j int) *array.Boolean {
@@ -1325,22 +1442,6 @@ func (t *ColListTable) Strings(j int) *array.Binary {
 func (t *ColListTable) Times(j int) *array.Int64 {
 	CheckColType(t.colMeta[j], flux.TTime)
 	return t.cols[j].(*timeColumn).data
-}
-
-func (t *ColListTable) Copy() *ColListTable {
-	cpy := new(ColListTable)
-	cpy.key = t.key
-	cpy.nrows = t.nrows
-
-	cpy.colMeta = make([]flux.ColMeta, len(t.colMeta))
-	copy(cpy.colMeta, t.colMeta)
-
-	cpy.cols = make([]column, len(t.cols))
-	for i, c := range t.cols {
-		cpy.cols[i] = c.Copy()
-	}
-
-	return cpy
 }
 
 // GetRow takes a row index and returns the record located at that index in the cache
@@ -1414,6 +1515,7 @@ type column interface {
 type columnBuilder interface {
 	Meta() flux.ColMeta
 	Clear()
+	Release()
 	Copy() column
 	Len() int
 	IsNil(i int) bool
@@ -1514,8 +1616,12 @@ type boolColumnBuilder struct {
 }
 
 func (c *boolColumnBuilder) Clear() {
-	c.alloc.Free(len(c.data), boolSize)
 	c.data = c.data[0:0]
+}
+
+func (c *boolColumnBuilder) Release() {
+	c.alloc.Free(cap(c.data), boolSize)
+	c.data = nil
 }
 
 func (c *boolColumnBuilder) Copy() column {
@@ -1595,8 +1701,12 @@ type intColumnBuilder struct {
 }
 
 func (c *intColumnBuilder) Clear() {
-	c.alloc.Free(len(c.data), int64Size)
 	c.data = c.data[0:0]
+}
+
+func (c *intColumnBuilder) Release() {
+	c.alloc.Free(cap(c.data), int64Size)
+	c.data = nil
 }
 
 func (c *intColumnBuilder) Copy() column {
@@ -1673,8 +1783,12 @@ type uintColumnBuilder struct {
 }
 
 func (c *uintColumnBuilder) Clear() {
-	c.alloc.Free(len(c.data), uint64Size)
 	c.data = c.data[0:0]
+}
+
+func (c *uintColumnBuilder) Release() {
+	c.alloc.Free(cap(c.data), uint64Size)
+	c.data = nil
 }
 
 func (c *uintColumnBuilder) Copy() column {
@@ -1752,8 +1866,12 @@ type floatColumnBuilder struct {
 }
 
 func (c *floatColumnBuilder) Clear() {
-	c.alloc.Free(len(c.data), float64Size)
 	c.data = c.data[0:0]
+}
+
+func (c *floatColumnBuilder) Release() {
+	c.alloc.Free(cap(c.data), float64Size)
+	c.data = nil
 }
 
 func (c *floatColumnBuilder) Copy() column {
@@ -1831,8 +1949,12 @@ type stringColumnBuilder struct {
 }
 
 func (c *stringColumnBuilder) Clear() {
-	c.alloc.Free(len(c.data), stringSize)
 	c.data = c.data[0:0]
+}
+
+func (c *stringColumnBuilder) Release() {
+	c.alloc.Free(cap(c.data), stringSize)
+	c.data = nil
 }
 
 func (c *stringColumnBuilder) Copy() column {
@@ -1917,8 +2039,12 @@ type timeColumnBuilder struct {
 }
 
 func (c *timeColumnBuilder) Clear() {
-	c.alloc.Free(len(c.data), timeSize)
 	c.data = c.data[0:0]
+}
+
+func (c *timeColumnBuilder) Release() {
+	c.alloc.Free(cap(c.data), timeSize)
+	c.data = nil
 }
 
 func (c *timeColumnBuilder) Copy() column {
@@ -2038,7 +2164,7 @@ func (d *tableBuilderCache) DiscardTable(key flux.GroupKey) {
 func (d *tableBuilderCache) ExpireTable(key flux.GroupKey) {
 	b, ok := d.tables.Delete(key)
 	if ok {
-		b.(tableState).builder.ClearData()
+		b.(tableState).builder.Release()
 	}
 }
 
@@ -2056,4 +2182,55 @@ func (d *tableBuilderCache) ForEachWithContext(f func(flux.GroupKey, Trigger, Ta
 			Count: b.builder.NRows(),
 		})
 	})
+}
+
+type emptyTable struct {
+	key  flux.GroupKey
+	cols []flux.ColMeta
+	used int32
+}
+
+// NewEmptyTable constructs a new empty table with the given
+// group key and columns.
+func NewEmptyTable(key flux.GroupKey, cols []flux.ColMeta) flux.Table {
+	return emptyTable{
+		key:  key,
+		cols: cols,
+	}
+}
+
+func (t emptyTable) Key() flux.GroupKey {
+	return t.key
+}
+
+func (t emptyTable) Cols() []flux.ColMeta {
+	return t.cols
+}
+
+func (t emptyTable) Do(f func(flux.ColReader) error) error {
+	if !atomic.CompareAndSwapInt32(&t.used, 0, 1) {
+		return errors.New(codes.Internal, "table already read")
+	}
+
+	// Construct empty arrays for each column.
+	arrs := make([]array.Interface, len(t.cols))
+	for i, col := range t.cols {
+		b := arrow.NewBuilder(col.Type, memory.DefaultAllocator)
+		arrs[i] = b.NewArray()
+	}
+	buf := arrow.TableBuffer{
+		GroupKey: t.key,
+		Columns:  t.cols,
+		Values:   arrs,
+	}
+	defer buf.Release()
+	return f(&buf)
+}
+
+func (t emptyTable) Done() {
+	atomic.StoreInt32(&t.used, 1)
+}
+
+func (t emptyTable) Empty() bool {
+	return true
 }

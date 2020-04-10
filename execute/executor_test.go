@@ -10,8 +10,10 @@ import (
 	"github.com/influxdata/flux"
 	"github.com/influxdata/flux/ast"
 	_ "github.com/influxdata/flux/builtin"
+	"github.com/influxdata/flux/codes"
 	"github.com/influxdata/flux/execute"
 	"github.com/influxdata/flux/execute/executetest"
+	"github.com/influxdata/flux/interpreter"
 	"github.com/influxdata/flux/memory"
 	"github.com/influxdata/flux/plan"
 	"github.com/influxdata/flux/plan/plantest"
@@ -105,26 +107,29 @@ func TestExecutor_Execute(t *testing.T) {
 						}},
 					)),
 					plan.CreatePhysicalNode("filter", &universe.FilterProcedureSpec{
-						Fn: &semantic.FunctionExpression{
-							Block: &semantic.FunctionBlock{
-								Parameters: &semantic.FunctionParameters{
-									List: []*semantic.FunctionParameter{
-										{
-											Key: &semantic.Identifier{Name: "r"},
+						Fn: interpreter.ResolvedFunction{
+							Fn: &semantic.FunctionExpression{
+								Block: &semantic.FunctionBlock{
+									Parameters: &semantic.FunctionParameters{
+										List: []*semantic.FunctionParameter{
+											{
+												Key: &semantic.Identifier{Name: "r"},
+											},
 										},
 									},
-								},
-								Body: &semantic.BinaryExpression{
-									Operator: ast.LessThanOperator,
-									Left: &semantic.MemberExpression{
-										Property: "_value",
-										Object: &semantic.IdentifierExpression{
-											Name: "r",
+									Body: &semantic.BinaryExpression{
+										Operator: ast.LessThanOperator,
+										Left: &semantic.MemberExpression{
+											Property: "_value",
+											Object: &semantic.IdentifierExpression{
+												Name: "r",
+											},
 										},
+										Right: &semantic.FloatLiteral{Value: 2.5},
 									},
-									Right: &semantic.FloatLiteral{Value: 2.5},
 								},
 							},
+							Scope: flux.Prelude(),
 						},
 					}),
 					plan.CreatePhysicalNode("yield", executetest.NewYieldProcedureSpec("_result")),
@@ -191,24 +196,27 @@ func TestExecutor_Execute(t *testing.T) {
 						},
 					)),
 					plan.CreatePhysicalNode("filter", &universe.FilterProcedureSpec{
-						Fn: &semantic.FunctionExpression{
-							Block: &semantic.FunctionBlock{
-								Parameters: &semantic.FunctionParameters{
-									List: []*semantic.FunctionParameter{
-										{
-											Key: &semantic.Identifier{Name: "r"},
+						Fn: interpreter.ResolvedFunction{
+							Scope: flux.Prelude(),
+							Fn: &semantic.FunctionExpression{
+								Block: &semantic.FunctionBlock{
+									Parameters: &semantic.FunctionParameters{
+										List: []*semantic.FunctionParameter{
+											{
+												Key: &semantic.Identifier{Name: "r"},
+											},
 										},
 									},
-								},
-								Body: &semantic.BinaryExpression{
-									Operator: ast.LessThanOperator,
-									Left: &semantic.MemberExpression{
-										Property: "_value",
-										Object: &semantic.IdentifierExpression{
-											Name: "r",
+									Body: &semantic.BinaryExpression{
+										Operator: ast.LessThanOperator,
+										Left: &semantic.MemberExpression{
+											Property: "_value",
+											Object: &semantic.IdentifierExpression{
+												Name: "r",
+											},
 										},
+										Right: &semantic.FloatLiteral{Value: 7.5},
 									},
-									Right: &semantic.FloatLiteral{Value: 7.5},
 								},
 							},
 						},
@@ -709,8 +717,16 @@ func TestExecutor_Execute(t *testing.T) {
 					{0, 1},
 				},
 			},
-			allocator: &memory.Allocator{Limit: func(v int64) *int64 { return &v }(64)},
-			wantErr:   memory.LimitExceededError{Limit: 64, Wanted: 65},
+			allocator: &memory.Allocator{
+				Limit: func(v int64) *int64 { return &v }(64),
+			},
+			wantErr: &flux.Error{
+				Code: codes.ResourceExhausted,
+				Err: memory.LimitExceededError{
+					Limit:  64,
+					Wanted: 65,
+				},
+			},
 		},
 	}
 
@@ -728,7 +744,7 @@ func TestExecutor_Execute(t *testing.T) {
 			// Construct physical query plan
 			plan := plantest.CreatePlanSpec(tc.spec)
 
-			exe := execute.NewExecutor(nil, zaptest.NewLogger(t))
+			exe := execute.NewExecutor(zaptest.NewLogger(t))
 
 			alloc := tc.allocator
 			if alloc == nil {
@@ -736,7 +752,8 @@ func TestExecutor_Execute(t *testing.T) {
 			}
 
 			// Execute the query and preserve any error returned
-			results, _, err := exe.Execute(context.Background(), plan, alloc)
+			ctx := executetest.NewTestExecuteDependencies().Inject(context.Background())
+			results, _, err := exe.Execute(ctx, plan, alloc)
 			var got map[string][]*executetest.Table
 			if err == nil {
 				got = make(map[string][]*executetest.Table, len(results))

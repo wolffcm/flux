@@ -6,6 +6,8 @@ import (
 	"runtime/debug"
 	"sync"
 
+	"github.com/influxdata/flux/codes"
+	"github.com/influxdata/flux/internal/errors"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -20,7 +22,7 @@ type Dispatcher interface {
 
 // ScheduleFunc is a function that represents work to do.
 // The throughput is the maximum number of messages to process for this scheduling.
-type ScheduleFunc func(throughput int)
+type ScheduleFunc func(ctx context.Context, throughput int)
 
 // poolDispatcher implements Dispatcher using a pool of goroutines.
 type poolDispatcher struct {
@@ -63,14 +65,18 @@ func (d *poolDispatcher) Start(n int, ctx context.Context) {
 			// Setup panic handling on the worker goroutines
 			defer func() {
 				if e := recover(); e != nil {
-					var err error
-					switch e := e.(type) {
-					case error:
-						err = e
-					default:
+					err, ok := e.(error)
+					if !ok {
 						err = fmt.Errorf("%v", e)
 					}
-					d.setErr(fmt.Errorf("panic: %v\n%s", err, debug.Stack()))
+
+					if errors.Code(err) == codes.ResourceExhausted {
+						d.setErr(err)
+						return
+					}
+
+					err = errors.Wrap(err, codes.Internal, "panic")
+					d.setErr(err)
 					if entry := d.logger.Check(zapcore.InfoLevel, "Dispatcher panic"); entry != nil {
 						entry.Stack = string(debug.Stack())
 						entry.Write(zap.Error(err))
@@ -123,7 +129,7 @@ func (d *poolDispatcher) run(ctx context.Context) {
 			// We are done, nothing left to do.
 			return
 		case fn := <-d.work:
-			fn(d.throughput)
+			fn(ctx, d.throughput)
 		}
 	}
 }

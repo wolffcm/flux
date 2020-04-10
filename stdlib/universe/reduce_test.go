@@ -1,14 +1,18 @@
 package universe_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/influxdata/flux"
 	"github.com/influxdata/flux/ast"
+	"github.com/influxdata/flux/dependencies/dependenciestest"
 	"github.com/influxdata/flux/execute"
 	"github.com/influxdata/flux/execute/executetest"
+	"github.com/influxdata/flux/interpreter"
 	"github.com/influxdata/flux/semantic"
 	"github.com/influxdata/flux/stdlib/universe"
+	"github.com/influxdata/flux/values/valuestest"
 )
 
 func TestReduce_Process(t *testing.T) {
@@ -24,34 +28,37 @@ func TestReduce_Process(t *testing.T) {
 			spec: &universe.ReduceProcedureSpec{
 				Identity:    map[string]string{"sum": "0.0"},
 				ReducerType: semantic.NewObjectType(map[string]semantic.Type{"sum": semantic.Float}),
-				Fn: &semantic.FunctionExpression{
-					Block: &semantic.FunctionBlock{
-						Parameters: &semantic.FunctionParameters{
-							List: []*semantic.FunctionParameter{{Key: &semantic.Identifier{Name: "r"}}, {Key: &semantic.Identifier{Name: "accumulator"}}},
-						},
-						Body: &semantic.ObjectExpression{
-							Properties: []*semantic.Property{
-								{
-									Key: &semantic.Identifier{Name: "sum"},
-									Value: &semantic.BinaryExpression{
-										Operator: ast.AdditionOperator,
-										Left: &semantic.MemberExpression{
-											Object: &semantic.IdentifierExpression{
-												Name: "r",
+				Fn: interpreter.ResolvedFunction{
+					Fn: &semantic.FunctionExpression{
+						Block: &semantic.FunctionBlock{
+							Parameters: &semantic.FunctionParameters{
+								List: []*semantic.FunctionParameter{{Key: &semantic.Identifier{Name: "r"}}, {Key: &semantic.Identifier{Name: "accumulator"}}},
+							},
+							Body: &semantic.ObjectExpression{
+								Properties: []*semantic.Property{
+									{
+										Key: &semantic.Identifier{Name: "sum"},
+										Value: &semantic.BinaryExpression{
+											Operator: ast.AdditionOperator,
+											Left: &semantic.MemberExpression{
+												Object: &semantic.IdentifierExpression{
+													Name: "r",
+												},
+												Property: "_value",
 											},
-											Property: "_value",
-										},
-										Right: &semantic.MemberExpression{
-											Object: &semantic.IdentifierExpression{
-												Name: "accumulator",
+											Right: &semantic.MemberExpression{
+												Object: &semantic.IdentifierExpression{
+													Name: "accumulator",
+												},
+												Property: "sum",
 											},
-											Property: "sum",
 										},
 									},
 								},
 							},
 						},
 					},
+					Scope: valuestest.NowScope(),
 				},
 			},
 			data: []flux.Table{&executetest.Table{
@@ -78,52 +85,55 @@ func TestReduce_Process(t *testing.T) {
 			spec: &universe.ReduceProcedureSpec{
 				Identity:    map[string]string{"sum": "0.0", "prod": "1.0"},
 				ReducerType: semantic.NewObjectType(map[string]semantic.Type{"sum": semantic.Float, "prod": semantic.Float}),
-				Fn: &semantic.FunctionExpression{
-					Block: &semantic.FunctionBlock{
-						Parameters: &semantic.FunctionParameters{
-							List: []*semantic.FunctionParameter{{Key: &semantic.Identifier{Name: "r"}}, {Key: &semantic.Identifier{Name: "accumulator"}}},
-						},
-						Body: &semantic.ObjectExpression{
-							Properties: []*semantic.Property{
-								{
-									Key: &semantic.Identifier{Name: "sum"},
-									Value: &semantic.BinaryExpression{
-										Operator: ast.AdditionOperator,
-										Left: &semantic.MemberExpression{
-											Object: &semantic.IdentifierExpression{
-												Name: "r",
+				Fn: interpreter.ResolvedFunction{
+					Fn: &semantic.FunctionExpression{
+						Block: &semantic.FunctionBlock{
+							Parameters: &semantic.FunctionParameters{
+								List: []*semantic.FunctionParameter{{Key: &semantic.Identifier{Name: "r"}}, {Key: &semantic.Identifier{Name: "accumulator"}}},
+							},
+							Body: &semantic.ObjectExpression{
+								Properties: []*semantic.Property{
+									{
+										Key: &semantic.Identifier{Name: "sum"},
+										Value: &semantic.BinaryExpression{
+											Operator: ast.AdditionOperator,
+											Left: &semantic.MemberExpression{
+												Object: &semantic.IdentifierExpression{
+													Name: "r",
+												},
+												Property: "_value",
 											},
-											Property: "_value",
-										},
-										Right: &semantic.MemberExpression{
-											Object: &semantic.IdentifierExpression{
-												Name: "accumulator",
+											Right: &semantic.MemberExpression{
+												Object: &semantic.IdentifierExpression{
+													Name: "accumulator",
+												},
+												Property: "sum",
 											},
-											Property: "sum",
 										},
 									},
-								},
-								{
-									Key: &semantic.Identifier{Name: "prod"},
-									Value: &semantic.BinaryExpression{
-										Operator: ast.MultiplicationOperator,
-										Left: &semantic.MemberExpression{
-											Object: &semantic.IdentifierExpression{
-												Name: "r",
+									{
+										Key: &semantic.Identifier{Name: "prod"},
+										Value: &semantic.BinaryExpression{
+											Operator: ast.MultiplicationOperator,
+											Left: &semantic.MemberExpression{
+												Object: &semantic.IdentifierExpression{
+													Name: "r",
+												},
+												Property: "_value",
 											},
-											Property: "_value",
-										},
-										Right: &semantic.MemberExpression{
-											Object: &semantic.IdentifierExpression{
-												Name: "accumulator",
+											Right: &semantic.MemberExpression{
+												Object: &semantic.IdentifierExpression{
+													Name: "accumulator",
+												},
+												Property: "prod",
 											},
-											Property: "prod",
 										},
 									},
 								},
 							},
 						},
 					},
+					Scope: valuestest.NowScope(),
 				},
 			},
 			data: []flux.Table{&executetest.Table{
@@ -156,7 +166,8 @@ func TestReduce_Process(t *testing.T) {
 				tc.want,
 				tc.wantErr,
 				func(d execute.Dataset, c execute.TableBuilderCache) execute.Transformation {
-					f, err := universe.NewReduceTransformation(d, c, tc.spec)
+					ctx := dependenciestest.Default().Inject(context.Background())
+					f, err := universe.NewReduceTransformation(ctx, tc.spec, d, c)
 					if err != nil {
 						t.Fatal(err)
 					}

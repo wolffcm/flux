@@ -11,9 +11,10 @@ import (
 )
 
 type TokenPattern struct {
-	s   string
-	tok token.Token
-	lit string
+	s     string
+	tok   token.Token
+	lit   string
+	noEOF bool
 }
 
 // common lists the patterns common for both scanning functions.
@@ -40,6 +41,11 @@ var common = []TokenPattern{
 	{s: "2009-10-15T09:00:00", tok: token.TIME, lit: "2009-10-15T09:00:00"},
 	{s: "2018-01-01", tok: token.TIME, lit: "2018-01-01"},
 	{s: `"abc"`, tok: token.STRING, lit: `"abc"`},
+	{s: `"{allowed}"`, tok: token.STRING, lit: `"{allowed}"`},
+	{s: `"\${escaped}"`, tok: token.STRING, lit: `"\${escaped}"`},
+	{s: `"dollar sign at end $"`, tok: token.STRING, lit: `"dollar sign at end $"`},
+	{s: `"$0.02"`, tok: token.STRING, lit: `"$0.02"`},
+	{s: `"${name}"`, tok: token.QUOTE, lit: `"`, noEOF: true},
 	{s: `"string with double \" quote"`, tok: token.STRING, lit: `"string with double \" quote"`},
 	{s: `"string with backslash \\"`, tok: token.STRING, lit: `"string with backslash \\"`},
 	{s: `"日本語"`, tok: token.STRING, lit: `"日本語"`},
@@ -51,6 +57,7 @@ var common = []TokenPattern{
 	{s: `and`, tok: token.AND, lit: `and`},
 	{s: `or`, tok: token.OR, lit: `or`},
 	{s: `not`, tok: token.NOT, lit: `not`},
+	{s: `exists`, tok: token.EXISTS, lit: `exists`},
 	{s: `empty`, tok: token.EMPTY, lit: `empty`},
 	{s: `in`, tok: token.IN, lit: `in`},
 	{s: `import`, tok: token.IMPORT, lit: `import`},
@@ -62,6 +69,7 @@ var common = []TokenPattern{
 	// We skip div because the general parser can't tell the difference
 	// between div and regex.
 	{s: `%`, tok: token.MOD, lit: `%`},
+	{s: `^`, tok: token.POW, lit: `^`},
 	{s: `==`, tok: token.EQ, lit: `==`},
 	{s: `<`, tok: token.LT, lit: `<`},
 	{s: `>`, tok: token.GT, lit: `>`},
@@ -128,8 +136,10 @@ func TestScanner_Scan(t *testing.T) {
 			}
 
 			// Expect an EOF token.
-			if _, tok, _ := s.Scan(); tok != token.EOF {
-				t.Errorf("expected eof token, got %d", tok)
+			if !tt.noEOF {
+				if _, tok, _ := s.Scan(); tok != token.EOF {
+					t.Errorf("expected eof token, got %d", tok)
+				}
 			}
 		})
 	}
@@ -149,7 +159,36 @@ func TestScanner_ScanWithRegex(t *testing.T) {
 			}
 
 			// Expect an EOF token.
-			if _, tok, _ := s.ScanWithRegex(); tok != token.EOF {
+			if !tt.noEOF {
+				if _, tok, _ := s.ScanWithRegex(); tok != token.EOF {
+					t.Errorf("expected eof token, got %d", tok)
+				}
+			}
+		})
+	}
+}
+
+func TestScanner_ScanStringExpr(t *testing.T) {
+	for _, tt := range []TokenPattern{
+		{s: `"`, tok: token.QUOTE, lit: `"`},
+		{s: `${`, tok: token.STRINGEXPR, lit: `${`},
+		{s: `$0.02`, tok: token.TEXT, lit: `$0.02`},
+		{s: `hello world`, tok: token.TEXT, lit: `hello world`},
+		{s: `{ braces allowed }`, tok: token.TEXT, lit: `{ braces allowed }`},
+	} {
+		t.Run(tt.s, func(t *testing.T) {
+			f := token.NewFile("query.flux", len(tt.s))
+			s := scanner.New(f, []byte(tt.s))
+			_, tok, lit := s.ScanStringExpr()
+			if want, got := tt.tok, tok; want != got {
+				t.Errorf("unexpected token -want/+got\n\t- %d\n\t+ %d", want, got)
+			}
+			if want, got := tt.lit, lit; want != got {
+				t.Errorf("unexpected literal -want/+got\n\t- %s\n\t+ %s", want, got)
+			}
+
+			// Expect an EOF token.
+			if _, tok, _ := s.ScanStringExpr(); tok != token.EOF {
 				t.Errorf("expected eof token, got %d", tok)
 			}
 		})
@@ -225,6 +264,98 @@ func TestScanner_UnreadEOF(t *testing.T) {
 	_, tok, _ = s.ScanWithRegex()
 	if want, got := token.EOF, tok; want != got {
 		t.Fatalf("unexpected token after first unread: %d", tok)
+	}
+}
+
+func TestScanner_MultipleTokens_StringExpr(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		s    string
+		want []token.Token
+	}{
+		{
+			name: "only expr",
+			s:    `"${a + b}"`,
+			want: []token.Token{
+				token.QUOTE,
+				token.STRINGEXPR,
+				token.TEXT,
+				token.QUOTE,
+			},
+		},
+		{
+			name: "with expr",
+			s:    `"a + b = ${a + b}"`,
+			want: []token.Token{
+				token.QUOTE,
+				token.TEXT,
+				token.STRINGEXPR,
+				token.TEXT,
+				token.QUOTE,
+			},
+		},
+		{
+			name: "multiple expr",
+			s:    `"a + b = ${a + b} and a - b = ${a - b}"`,
+			want: []token.Token{
+				token.QUOTE,
+				token.TEXT,
+				token.STRINGEXPR,
+				token.TEXT,
+				token.STRINGEXPR,
+				token.TEXT,
+				token.QUOTE,
+			},
+		},
+		{
+			name: "end with text",
+			s:    `"a + b = ${a + b} and a - b = ?"`,
+			want: []token.Token{
+				token.QUOTE,
+				token.TEXT,
+				token.STRINGEXPR,
+				token.TEXT,
+				token.QUOTE,
+			},
+		},
+		{
+			name: "escaped quote",
+			s:    `"these \"\" are escaped quotes"`,
+			want: []token.Token{
+				token.QUOTE,
+				token.TEXT,
+				token.QUOTE,
+			},
+		},
+		{
+			name: "not escaped quote",
+			s:    `"this " is not an escaped quote"`,
+			want: []token.Token{
+				token.QUOTE,
+				token.TEXT,
+				token.QUOTE,
+				token.TEXT,
+				token.QUOTE,
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := token.NewFile("query.flux", len(tt.s))
+			s := scanner.New(f, []byte(tt.s))
+
+			var got []token.Token
+			for {
+				_, tok, _ := s.ScanStringExpr()
+				if tok == token.EOF {
+					break
+				}
+				got = append(got, tok)
+			}
+
+			if !cmp.Equal(tt.want, got) {
+				t.Fatalf("unexpected tokens:\n%s", cmp.Diff(tt.want, got))
+			}
+		})
 	}
 }
 

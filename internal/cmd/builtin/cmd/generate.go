@@ -13,9 +13,10 @@ import (
 
 	"github.com/dave/jennifer/jen"
 	"github.com/influxdata/flux/ast"
+	"github.com/influxdata/flux/codes"
+	"github.com/influxdata/flux/internal/errors"
 	"github.com/influxdata/flux/internal/token"
 	"github.com/influxdata/flux/parser"
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -66,6 +67,12 @@ func generate(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
+
+		// Annotate the packages with the absolute flux package path.
+		for _, pkg := range pkgs {
+			pkg.Path = fluxPath
+		}
+
 		var fluxPkg, testPkg *ast.Package
 		switch len(pkgs) {
 		case 0:
@@ -102,7 +109,7 @@ func generate(cmd *cobra.Command, args []string) error {
 
 		if fluxPkg != nil {
 			if ast.Check(fluxPkg) > 0 {
-				return errors.Wrapf(ast.GetError(fluxPkg), "failed to parse package %q", fluxPkg.Package)
+				return errors.Wrapf(ast.GetError(fluxPkg), codes.Inherit, "failed to parse package %q", fluxPkg.Package)
 			}
 			// Assign import path
 			fluxPkg.Path = fluxPath
@@ -118,16 +125,21 @@ func generate(cmd *cobra.Command, args []string) error {
 		}
 		if testPkg != nil {
 			if ast.Check(testPkg) > 0 {
-				return errors.Wrapf(ast.GetError(testPkg), "failed to parse package %q", testPkg.Package)
+				return errors.Wrapf(ast.GetError(testPkg), codes.Inherit, "failed to parse test package %q", testPkg.Package)
+			}
+			// Validate test package file use _test.flux suffix for the file name
+			for _, f := range testPkg.Files {
+				if !strings.HasSuffix(f.Name, "_test.flux") {
+					return fmt.Errorf("flux test files must use the _test.flux suffix in their file name, found %q", path.Join(dir, f.Name))
+				}
 			}
 			// Track go import path
 			importPath := path.Join(pkgName, dir)
 			if importPath != pkgName {
 				testPackages = append(testPackages, importPath)
 			}
-			// Isolate tests files into their own package
-			packs := splitTestPackages(testPkg)
-			if err := generateTestASTFile(dir, testPkg.Package, packs); err != nil {
+			// Generate test AST file using non *_test package name since this is Go code that needs to be part of the normal build.
+			if err := generateTestASTFile(dir, strings.TrimSuffix(testPkg.Package, "_test"), []*ast.Package{testPkg}); err != nil {
 				return err
 			}
 		}
@@ -212,20 +224,6 @@ func generateTestASTFile(dir, pkg string, pkgs []*ast.Package) error {
 	}
 	file.Var().Id("FluxTestPackages").Op("=").Add(v)
 	return file.Save(filepath.Join(dir, "flux_test_gen.go"))
-}
-
-func splitTestPackages(pkg *ast.Package) []*ast.Package {
-	packs := make([]*ast.Package, len(pkg.Files))
-	for i, file := range pkg.Files {
-		if file.Package != nil {
-			file.Package.Name.Name = "main"
-		}
-		packs[i] = &ast.Package{
-			Package: "main",
-			Files:   []*ast.File{file},
-		}
-	}
-	return packs
 }
 
 func readIgnoreFile(fn string) ([]string, error) {

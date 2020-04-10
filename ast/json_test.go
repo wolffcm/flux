@@ -19,6 +19,40 @@ func TestJSONMarshal(t *testing.T) {
 		want string
 	}{
 		{
+			name: "string interpolation",
+			node: &ast.StringExpression{
+				Parts: []ast.StringExpressionPart{
+					&ast.TextPart{
+						Value: "a = ",
+					},
+					&ast.InterpolatedPart{
+						Expression: &ast.Identifier{
+							Name: "a",
+						},
+					},
+				},
+			},
+			want: `{"type":"StringExpression","parts":[{"type":"TextPart","value":"a = "},{"type":"InterpolatedPart","expression":{"type":"Identifier","name":"a"}}]}`,
+		},
+		{
+			name: "paren expression",
+			node: &ast.ParenExpression{
+				Expression: &ast.StringExpression{
+					Parts: []ast.StringExpressionPart{
+						&ast.TextPart{
+							Value: "a = ",
+						},
+						&ast.InterpolatedPart{
+							Expression: &ast.Identifier{
+								Name: "a",
+							},
+						},
+					},
+				},
+			},
+			want: `{"type":"ParenExpression","expression":{"type":"StringExpression","parts":[{"type":"TextPart","value":"a = "},{"type":"InterpolatedPart","expression":{"type":"Identifier","name":"a"}}]}}`,
+		},
+		{
 			name: "simple package",
 			node: &ast.Package{
 				Package: "foo",
@@ -47,6 +81,7 @@ func TestJSONMarshal(t *testing.T) {
 		{
 			name: "file",
 			node: &ast.File{
+				Metadata: "parser-type=none",
 				Package: &ast.PackageClause{
 					Name: &ast.Identifier{Name: "foo"},
 				},
@@ -60,7 +95,7 @@ func TestJSONMarshal(t *testing.T) {
 					},
 				},
 			},
-			want: `{"type":"File","package":{"type":"PackageClause","name":{"type":"Identifier","name":"foo"}},"imports":[{"type":"ImportDeclaration","as":{"type":"Identifier","name":"b"},"path":{"type":"StringLiteral","value":"path/bar"}}],"body":[{"type":"ExpressionStatement","expression":{"type":"StringLiteral","value":"hello"}}]}`,
+			want: `{"type":"File","metadata":"parser-type=none","package":{"type":"PackageClause","name":{"type":"Identifier","name":"foo"}},"imports":[{"type":"ImportDeclaration","as":{"type":"Identifier","name":"b"},"path":{"type":"StringLiteral","value":"path/bar"}}],"body":[{"type":"ExpressionStatement","expression":{"type":"StringLiteral","value":"hello"}}]}`,
 		},
 		{
 			name: "block",
@@ -379,6 +414,52 @@ func TestJSONMarshal(t *testing.T) {
 				Value: time.Date(2017, 8, 8, 8, 8, 8, 8, time.UTC),
 			},
 			want: `{"type":"DateTimeLiteral","value":"2017-08-08T08:08:08.000000008Z"}`,
+		},
+		{
+			name: "object expression with source locations and errors",
+			node: &ast.ObjectExpression{
+				BaseNode: ast.BaseNode{
+					Loc: &ast.SourceLocation{
+						File:   "foo.flux",
+						Start:  ast.Position{Line: 1, Column: 1},
+						End:    ast.Position{Line: 1, Column: 13},
+						Source: "{a: \"hello\"}",
+					},
+				},
+				Properties: []*ast.Property{{
+					BaseNode: ast.BaseNode{
+						Loc: &ast.SourceLocation{
+							File:   "foo.flux",
+							Start:  ast.Position{Line: 1, Column: 2},
+							End:    ast.Position{Line: 1, Column: 12},
+							Source: "a: \"hello\"",
+						},
+						Errors: []ast.Error{{Msg: "an error"}},
+					},
+					Key: &ast.Identifier{BaseNode: ast.BaseNode{
+						Loc: &ast.SourceLocation{
+							File:   "foo.flux",
+							Start:  ast.Position{Line: 1, Column: 2},
+							End:    ast.Position{Line: 1, Column: 3},
+							Source: "a",
+						},
+					},
+						Name: "a",
+					},
+					Value: &ast.StringLiteral{BaseNode: ast.BaseNode{
+						Loc: &ast.SourceLocation{
+							File:   "foo.flux",
+							Start:  ast.Position{Line: 1, Column: 5},
+							End:    ast.Position{Line: 1, Column: 12},
+							Source: "\"hello\"",
+						},
+						Errors: []ast.Error{{Msg: "an error"}, {Msg: "another error"}},
+					},
+						Value: "hello",
+					},
+				}},
+			},
+			want: `{"type":"ObjectExpression","location":{"file":"foo.flux","start":{"line":1,"column":1},"end":{"line":1,"column":13},"source":"{a: \"hello\"}"},"properties":[{"type":"Property","location":{"file":"foo.flux","start":{"line":1,"column":2},"end":{"line":1,"column":12},"source":"a: \"hello\""},"errors":[{"msg":"an error"}],"key":{"type":"Identifier","location":{"file":"foo.flux","start":{"line":1,"column":2},"end":{"line":1,"column":3},"source":"a"},"name":"a"},"value":{"type":"StringLiteral","location":{"file":"foo.flux","start":{"line":1,"column":5},"end":{"line":1,"column":12},"source":"\"hello\""},"errors":[{"msg":"an error"},{"msg":"another error"}],"value":"hello"}}]}`,
 		},
 	}
 	for _, tc := range testCases {

@@ -2,18 +2,18 @@ package universe
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/influxdata/flux"
+	"github.com/influxdata/flux/codes"
+	"github.com/influxdata/flux/compiler"
 	"github.com/influxdata/flux/execute"
+	"github.com/influxdata/flux/internal/errors"
 	"github.com/influxdata/flux/interpreter"
 	"github.com/influxdata/flux/lang"
-	"github.com/influxdata/flux/memory"
 	"github.com/influxdata/flux/semantic"
 	"github.com/influxdata/flux/values"
 	"github.com/influxdata/flux/values/objects"
-	"github.com/pkg/errors"
 )
 
 const (
@@ -53,20 +53,30 @@ func NewTableFindFunction() values.Value {
 		false)
 }
 
-func tableFindCall(args values.Object) (values.Value, error) {
+func tableFindCall(ctx context.Context, args values.Object) (values.Value, error) {
 	arguments := interpreter.NewArguments(args)
 	var to *flux.TableObject
 	if v, err := arguments.GetRequired(tableFindStreamArg); err != nil {
 		return nil, err
 	} else if v.Type() != flux.TableObjectMonoType {
-		return nil, fmt.Errorf("unexpected type for %v: want %v, got %v", tableFindStreamArg, "table stream", v.Type())
+		return nil, errors.Newf(codes.Invalid, "unexpected type for %v: want %v, got %v", tableFindStreamArg, "table stream", v.Type())
 	} else {
 		to = v.(*flux.TableObject)
 	}
 
-	fn, err := arguments.GetRequiredFunction(tableFindFunctionArg)
-	if err != nil {
-		return nil, fmt.Errorf("missing argument: %s", tableFindFunctionArg)
+	var fn *execute.TablePredicateFn
+	if call, err := arguments.GetRequiredFunction(tableFindFunctionArg); err != nil {
+		return nil, errors.Newf(codes.Invalid, "missing argument: %s", tableFindFunctionArg)
+	} else {
+		predicate, err := interpreter.ResolveFunction(call)
+		if err != nil {
+			return nil, err
+		}
+
+		fn, err = execute.NewTablePredicateFn(predicate.Fn, compiler.ToScope(predicate.Scope))
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	c := lang.TableObjectCompiler{
@@ -74,44 +84,53 @@ func tableFindCall(args values.Object) (values.Value, error) {
 		Now:    time.Now(),
 	}
 
-	p, err := c.Compile(context.Background())
+	p, err := c.Compile(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "error in table object compilation")
+		return nil, errors.Wrap(err, codes.Inherit, "error in table object compilation")
 	}
 
-	q, err := p.Start(context.Background(), &memory.Allocator{})
+	if !lang.HaveExecutionDependencies(ctx) {
+		return nil, errors.New(codes.Invalid, "do not have an execution context for tableFind, if using the repl, try executing this code on the server using the InfluxDB API")
+	}
+
+	deps := lang.GetExecutionDependencies(ctx)
+	if p, ok := p.(lang.LoggingProgram); ok {
+		p.SetLogger(deps.Logger)
+	}
+	q, err := p.Start(ctx, deps.Allocator)
 	if err != nil {
-		return nil, errors.Wrap(err, "error in table object start")
+		return nil, errors.Wrap(err, codes.Inherit, "error in table object start")
 	}
 
 	var t *objects.Table
 	var found bool
 	for res := range q.Results() {
 		if err := res.Tables().Do(func(tbl flux.Table) error {
+			defer tbl.Done()
 			if found {
 				// the result is filled, you can skip other tables
 				return nil
 			}
-			gk := objectFromGroupKey(tbl.Key())
-			pass, err := fn.Call(values.NewObjectWithValues(map[string]values.Value{tableFindFunctionGroupKeyArg: gk}))
-			if err != nil {
-				return errors.Wrap(err, "failed to evaluate group key predicate function")
+
+			if err := fn.Prepare(tbl); err != nil {
+				return err
 			}
-			found = pass.Bool()
+
+			var err error
+			found, err = fn.Eval(ctx, tbl)
+			if err != nil {
+				return errors.Wrap(err, codes.Inherit, "failed to evaluate group key predicate function")
+			}
+
 			if found {
-				// We need to copy the table in memory and increase its refCount in order to make
-				// subsequent calls to getRecord/Column idempotent. If we don't do it, then it would be
-				// consumed by calls to `Do`, and subsequent calls to getRecord/Column would find
-				// an empty table.
-				// TODO(aff): Note that, for now, it is not enough to `tbl.RefCount(1)`, because we cannot rely on its
-				//  implementation. When a table comes from `csv.from()` it is a `csv.tableDecoder` that
-				//  does nothing when `RefCount` is called.
-				if tbl, err := execute.CopyTable(tbl, &memory.Allocator{}); err != nil {
+				t, err = objects.NewTable(tbl)
+				if err != nil {
 					return err
-				} else {
-					tbl.RefCount(1)
-					t = objects.NewTable(tbl)
 				}
+			} else {
+				// TODO(jsternberg): Remove the Do call when Done
+				// is implemented for all table types.
+				_ = tbl.Do(func(flux.ColReader) error { return nil })
 			}
 			return nil
 		}); err != nil {
@@ -119,17 +138,9 @@ func tableFindCall(args values.Object) (values.Value, error) {
 		}
 	}
 	if !found {
-		return nil, fmt.Errorf("no table found")
+		return nil, errors.New(codes.NotFound, "no table found")
 	}
 	return t, nil
-}
-
-func objectFromGroupKey(gk flux.GroupKey) values.Object {
-	vsMap := make(map[string]values.Value, len(gk.Cols()))
-	for j, c := range gk.Cols() {
-		vsMap[c.Label] = gk.Value(j)
-	}
-	return values.NewObjectWithValues(vsMap)
 }
 
 func NewGetColumnFunction() values.Value {
@@ -147,15 +158,15 @@ func NewGetColumnFunction() values.Value {
 		false)
 }
 
-func getColumnCall(args values.Object) (values.Value, error) {
+func getColumnCall(ctx context.Context, args values.Object) (values.Value, error) {
 	arguments := interpreter.NewArguments(args)
 	var tbl flux.Table
 	if v, err := arguments.GetRequired(getColumnTableArg); err != nil {
 		return nil, err
 	} else if v.Type() != objects.TableMonoType {
-		return nil, fmt.Errorf("unexpected type for %s: want %v, got %v", getColumnTableArg, objects.TableMonoType, v.Type())
+		return nil, errors.Newf(codes.Invalid, "unexpected type for %s: want %v, got %v", getColumnTableArg, objects.TableMonoType, v.Type())
 	} else {
-		tbl = v.(*objects.Table).Table
+		tbl = v.(*objects.Table).Table()
 	}
 
 	col, err := arguments.GetRequiredString(getColumnColumnArg)
@@ -165,7 +176,7 @@ func getColumnCall(args values.Object) (values.Value, error) {
 
 	idx := execute.ColIdx(col, tbl.Cols())
 	if idx < 0 {
-		return nil, fmt.Errorf("cannot find column %s", col)
+		return nil, errors.Newf(codes.Invalid, "cannot find column %s", col)
 	}
 	var a values.Array
 	if err = tbl.Do(func(cr flux.ColReader) error {
@@ -242,15 +253,15 @@ func NewGetRecordFunction() values.Value {
 		false)
 }
 
-func getRecordCall(args values.Object) (values.Value, error) {
+func getRecordCall(ctx context.Context, args values.Object) (values.Value, error) {
 	arguments := interpreter.NewArguments(args)
 	var tbl flux.Table
 	if v, err := arguments.GetRequired(getRecordTableArg); err != nil {
 		return nil, err
 	} else if v.Type() != objects.TableMonoType {
-		return nil, fmt.Errorf("unexpected type for %s: want %v, got %v", getRecordTableArg, objects.TableMonoType, v.Type())
+		return nil, errors.Newf(codes.Invalid, "unexpected type for %s: want %v, got %v", getRecordTableArg, objects.TableMonoType, v.Type())
 	} else {
-		tbl = v.(*objects.Table).Table
+		tbl = v.(*objects.Table).Table()
 	}
 
 	rowIdx, err := arguments.GetRequiredInt(getRecordIndexArg)
@@ -261,7 +272,7 @@ func getRecordCall(args values.Object) (values.Value, error) {
 	var r values.Object
 	if err = tbl.Do(func(cr flux.ColReader) error {
 		if rowIdx < 0 || int(rowIdx) >= cr.Len() {
-			return fmt.Errorf("index out of bounds: %d", rowIdx)
+			return errors.Newf(codes.OutOfRange, "index out of bounds: %d", rowIdx)
 		}
 		r = objectFromRow(int(rowIdx), cr)
 		return nil

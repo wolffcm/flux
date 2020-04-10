@@ -1,11 +1,9 @@
 package semantic
 
 import (
-	"errors"
-	"fmt"
-	"time"
-
 	"github.com/influxdata/flux/ast"
+	"github.com/influxdata/flux/codes"
+	"github.com/influxdata/flux/internal/errors"
 )
 
 // New creates a semantic graph from the provided AST
@@ -36,6 +34,7 @@ func analyzePackage(pkg *ast.Package) (*Package, error) {
 	}
 	return p, nil
 }
+
 func analyzeFile(file *ast.File) (*File, error) {
 	f := &File{
 		loc:  loc(file.Location()),
@@ -59,7 +58,7 @@ func analyzeFile(file *ast.File) (*File, error) {
 	}
 
 	for i, s := range file.Body {
-		n, err := analyzeStatment(s)
+		n, err := analyzeStatement(s)
 		if err != nil {
 			return nil, err
 		}
@@ -105,17 +104,17 @@ func analyzeImportDeclaration(imp *ast.ImportDeclaration) (*ImportDeclaration, e
 func analyzeNode(n ast.Node) (Node, error) {
 	switch n := n.(type) {
 	case ast.Statement:
-		return analyzeStatment(n)
+		return analyzeStatement(n)
 	case ast.Expression:
 		return analyzeExpression(n)
 	case *ast.Block:
 		return analyzeBlock(n)
 	default:
-		return nil, fmt.Errorf("unsupported node %T", n)
+		return nil, errors.Newf(codes.Internal, "unsupported node %T", n)
 	}
 }
 
-func analyzeStatment(s ast.Statement) (Statement, error) {
+func analyzeStatement(s ast.Statement) (Statement, error) {
 	switch s := s.(type) {
 	case *ast.OptionStatement:
 		return analyzeOptionStatement(s)
@@ -132,7 +131,7 @@ func analyzeStatment(s ast.Statement) (Statement, error) {
 	case *ast.MemberAssignment:
 		return analyzeMemberAssignment(s)
 	default:
-		return nil, fmt.Errorf("unsupported statement %T", s)
+		return nil, errors.Newf(codes.Internal, "unsupported statement %T", s)
 	}
 }
 
@@ -143,7 +142,7 @@ func analyzeAssignment(a ast.Assignment) (Assignment, error) {
 	case *ast.MemberAssignment:
 		return analyzeMemberAssignment(a)
 	default:
-		return nil, fmt.Errorf("unsupported assignment %T", a)
+		return nil, errors.Newf(codes.Internal, "unsupported assignment %T", a)
 	}
 }
 
@@ -153,7 +152,7 @@ func analyzeBlock(block *ast.Block) (*Block, error) {
 		Body: make([]Statement, len(block.Body)),
 	}
 	for i, s := range block.Body {
-		n, err := analyzeStatment(s)
+		n, err := analyzeStatement(s)
 		if err != nil {
 			return nil, err
 		}
@@ -161,7 +160,7 @@ func analyzeBlock(block *ast.Block) (*Block, error) {
 	}
 	last := len(b.Body) - 1
 	if _, ok := b.Body[last].(*ReturnStatement); !ok {
-		return nil, errors.New("missing return statement in block")
+		return nil, errors.New(codes.Invalid, "missing return statement in block")
 	}
 	return b, nil
 }
@@ -278,11 +277,59 @@ func analyzeExpression(expr ast.Expression) (Expression, error) {
 		return analyzeArrayExpression(expr)
 	case *ast.Identifier:
 		return analyzeIdentifierExpression(expr)
+	case *ast.StringExpression:
+		return analyzeStringExpression(expr)
+	case *ast.ParenExpression:
+		// Unwrap the parenthesis and analyze underlying Expression.
+		return analyzeExpression(expr.Expression)
 	case ast.Literal:
 		return analyzeLiteral(expr)
 	default:
-		return nil, fmt.Errorf("unsupported expression %T", expr)
+		return nil, errors.Newf(codes.Internal, "unsupported expression %T", expr)
 	}
+}
+
+func analyzeStringExpression(expr *ast.StringExpression) (Expression, error) {
+	parts := make([]StringExpressionPart, len(expr.Parts))
+	for i, p := range expr.Parts {
+		part, err := analyzeStringExpressionPart(p)
+		if err != nil {
+			return nil, err
+		}
+		parts[i] = part
+	}
+	return &StringExpression{
+		loc:   loc(expr.Location()),
+		Parts: parts,
+	}, nil
+}
+
+func analyzeStringExpressionPart(part ast.StringExpressionPart) (StringExpressionPart, error) {
+	switch p := part.(type) {
+	case *ast.TextPart:
+		return analyzeTextPart(p)
+	case *ast.InterpolatedPart:
+		return analyzeInterpolatedPart(p)
+	}
+	return nil, errors.Newf(codes.Internal, "unsupported string interpolation part %T", part)
+}
+
+func analyzeTextPart(part *ast.TextPart) (*TextPart, error) {
+	return &TextPart{
+		loc:   loc(part.Location()),
+		Value: part.Value,
+	}, nil
+}
+
+func analyzeInterpolatedPart(part *ast.InterpolatedPart) (*InterpolatedPart, error) {
+	expr, err := analyzeExpression(part.Expression)
+	if err != nil {
+		return nil, err
+	}
+	return &InterpolatedPart{
+		loc:        loc(part.Location()),
+		Expression: expr,
+	}, nil
 }
 
 func analyzeLiteral(lit ast.Literal) (Literal, error) {
@@ -304,9 +351,9 @@ func analyzeLiteral(lit ast.Literal) (Literal, error) {
 	case *ast.DateTimeLiteral:
 		return analyzeDateTimeLiteral(lit)
 	case *ast.PipeLiteral:
-		return nil, errors.New("a pipe literal may only be used as a default value for an argument in a function definition")
+		return nil, errors.New(codes.Invalid, "a pipe literal may only be used as a default value for an argument in a function definition")
 	default:
-		return nil, fmt.Errorf("unsupported literal %T", lit)
+		return nil, errors.Newf(codes.Internal, "unsupported literal %T", lit)
 	}
 }
 
@@ -317,7 +364,7 @@ func analyzePropertyKey(key ast.PropertyKey) (PropertyKey, error) {
 	case *ast.StringLiteral:
 		return analyzeStringLiteral(key)
 	default:
-		return nil, fmt.Errorf("unsupported key %T", key)
+		return nil, errors.Newf(codes.Internal, "unsupported key %T", key)
 	}
 }
 
@@ -333,7 +380,7 @@ func analyzeFunctionExpression(arrow *ast.FunctionExpression) (*FunctionExpressi
 		for i, p := range arrow.Params {
 			ident, ok := p.Key.(*ast.Identifier)
 			if !ok {
-				return nil, fmt.Errorf("function params must be identifiers")
+				return nil, errors.New(codes.Invalid, "function params must be identifiers")
 			}
 			key, err := analyzeIdentifier(ident)
 			if err != nil {
@@ -348,7 +395,7 @@ func analyzeFunctionExpression(arrow *ast.FunctionExpression) (*FunctionExpressi
 					piped = true
 					pipedCount++
 					if pipedCount > 1 {
-						return nil, errors.New("only a single argument may be piped")
+						return nil, errors.New(codes.Invalid, "only a single argument may be piped")
 					}
 				} else {
 					d, err := analyzeExpression(p.Value)
@@ -407,11 +454,11 @@ func analyzeCallExpression(call *ast.CallExpression) (*CallExpression, error) {
 	}
 	var args *ObjectExpression
 	if l := len(call.Arguments); l > 1 {
-		return nil, fmt.Errorf("arguments are not a single object expression %v", args)
+		return nil, errors.Newf(codes.Internal, "arguments are not a single object expression %v", args)
 	} else if l == 1 {
 		obj, ok := call.Arguments[0].(*ast.ObjectExpression)
 		if !ok {
-			return nil, fmt.Errorf("arguments not an object expression")
+			return nil, errors.New(codes.Internal, "arguments not an object expression")
 		}
 		var err error
 		args, err = analyzeObjectExpression(obj)
@@ -550,6 +597,13 @@ func analyzeObjectExpression(obj *ast.ObjectExpression) (*ObjectExpression, erro
 		loc:        loc(obj.Location()),
 		Properties: make([]*Property, len(obj.Properties)),
 	}
+	if obj.With != nil {
+		w, err := analyzeIdentifierExpression(obj.With)
+		if err != nil {
+			return nil, err
+		}
+		o.With = w
+	}
 	for i, p := range obj.Properties {
 		n, err := analyzeProperty(p)
 		if err != nil {
@@ -621,13 +675,9 @@ func analyzeDateTimeLiteral(lit *ast.DateTimeLiteral) (*DateTimeLiteral, error) 
 	}, nil
 }
 func analyzeDurationLiteral(lit *ast.DurationLiteral) (*DurationLiteral, error) {
-	duration, err := ast.DurationFrom(lit, time.Time{})
-	if err != nil {
-		return nil, err
-	}
 	return &DurationLiteral{
-		loc:   loc(lit.Location()),
-		Value: duration,
+		loc:    loc(lit.Location()),
+		Values: lit.Values,
 	}, nil
 }
 func analyzeFloatLiteral(lit *ast.FloatLiteral) (*FloatLiteral, error) {

@@ -18,46 +18,46 @@ import (
 // In executing the retrieval process, Connect is called once at the onset, and subsequent calls of Fetch() and Decode()
 // are called iteratively until the data source is fully consumed.
 type SourceDecoder interface {
-	Connect() error
-	Fetch() (bool, error)
-	Decode() (flux.Table, error)
+	Connect(ctx context.Context) error
+	Fetch(ctx context.Context) (bool, error)
+	Decode(ctx context.Context) (flux.Table, error)
 	Close() error
 }
 
 // CreateSourceFromDecoder takes an implementation of a SourceDecoder, as well as a dataset ID and Administration type
 // and creates an execute.Source.
 func CreateSourceFromDecoder(decoder SourceDecoder, dsid DatasetID, a Administration) (Source, error) {
-	return &sourceIterator{decoder: decoder, id: dsid}, nil
+	return &sourceDecoder{decoder: decoder, id: dsid}, nil
 }
 
-type sourceIterator struct {
+type sourceDecoder struct {
 	decoder SourceDecoder
 	id      DatasetID
 	ts      []Transformation
 }
 
-func (c *sourceIterator) Do(f func(flux.Table) error) error {
-	err := c.decoder.Connect()
+func (c *sourceDecoder) Do(ctx context.Context, f func(flux.Table) error) error {
+	err := c.decoder.Connect(ctx)
 	if err != nil {
 		return err
 	}
 	defer c.decoder.Close()
 
 	runOnce := true
-	more, err := c.decoder.Fetch()
+	more, err := c.decoder.Fetch(ctx)
 	if err != nil {
 		return err
 	}
 	for runOnce || more {
 		runOnce = false
-		tbl, err := c.decoder.Decode()
+		tbl, err := c.decoder.Decode(ctx)
 		if err != nil {
 			return err
 		}
 		if err := f(tbl); err != nil {
 			return err
 		}
-		more, err = c.decoder.Fetch()
+		more, err = c.decoder.Fetch(ctx)
 		if err != nil {
 			return err
 		}
@@ -66,12 +66,12 @@ func (c *sourceIterator) Do(f func(flux.Table) error) error {
 	return nil
 }
 
-func (c *sourceIterator) AddTransformation(t Transformation) {
+func (c *sourceDecoder) AddTransformation(t Transformation) {
 	c.ts = append(c.ts, t)
 }
 
-func (c *sourceIterator) Run(ctx context.Context) {
-	err := c.Do(func(tbl flux.Table) error {
+func (c *sourceDecoder) Run(ctx context.Context) {
+	err := c.Do(ctx, func(tbl flux.Table) error {
 		for _, t := range c.ts {
 			err := t.Process(c.id, tbl)
 			if err != nil {
@@ -84,4 +84,66 @@ func (c *sourceIterator) Run(ctx context.Context) {
 	for _, t := range c.ts {
 		t.Finish(c.id, err)
 	}
+}
+
+// CreateSourceFromIterator takes an implementation of a SourceIterator as well as a dataset ID
+// and creates an execute.Source.
+func CreateSourceFromIterator(iterator SourceIterator, dsid DatasetID) (Source, error) {
+	return &sourceIterator{iterator: iterator, id: dsid}, nil
+}
+
+// SourceIterator is an interface for iterating over flux.Table values in
+// a source. It provides a common interface for creating an execute.Source
+// in an iterative way.
+type SourceIterator interface {
+	// Do will invoke the Source and cause each materialized flux.Table
+	// to the given function.
+	Do(ctx context.Context, f func(flux.Table) error) error
+}
+
+// sourceIterator implements execute.Source using the SourceIterator.
+type sourceIterator struct {
+	id       DatasetID
+	ts       []Transformation
+	iterator SourceIterator
+}
+
+func (s *sourceIterator) AddTransformation(t Transformation) {
+	s.ts = append(s.ts, t)
+}
+
+func (s *sourceIterator) Run(ctx context.Context) {
+	err := s.iterator.Do(ctx, s.processTable)
+	for _, t := range s.ts {
+		t.Finish(s.id, err)
+	}
+}
+
+// processTable will call Process on all of the transformations
+// associated with this source.
+//
+// If there are multiple sources, it will copy the table so it
+// can be properly buffered to the multiple transformations.
+func (s *sourceIterator) processTable(tbl flux.Table) error {
+	if len(s.ts) == 0 {
+		tbl.Done()
+		return nil
+	} else if len(s.ts) == 1 {
+		return s.ts[0].Process(s.id, tbl)
+	}
+
+	// There is more than one transformation so we need to
+	// copy the table for each transformation.
+	bufTable, err := CopyTable(tbl)
+	if err != nil {
+		return err
+	}
+	defer bufTable.Done()
+
+	for _, t := range s.ts {
+		if err := t.Process(s.id, bufTable.Copy()); err != nil {
+			return err
+		}
+	}
+	return nil
 }

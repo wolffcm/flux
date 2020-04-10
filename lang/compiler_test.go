@@ -3,7 +3,9 @@ package lang_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/influxdata/flux/ast"
 	_ "github.com/influxdata/flux/builtin"
 	fcsv "github.com/influxdata/flux/csv"
+	"github.com/influxdata/flux/dependencies/dependenciestest"
 	"github.com/influxdata/flux/execute"
 	"github.com/influxdata/flux/execute/executetest"
 	"github.com/influxdata/flux/interpreter"
@@ -35,29 +38,123 @@ func TestFluxCompiler(t *testing.T) {
 	ctx := context.Background()
 
 	for _, tc := range []struct {
-		q  string
-		ok bool
+		name   string
+		now    time.Time
+		extern *ast.File
+		q      string
+		err    string
 	}{
-		{q: `from(bucket: "foo")`, ok: true},
-		{q: `t=""t.t`},
-		{q: `t=0t.s`},
-		{q: `x = from(bucket: "foo")`},
-		{q: `x = from(bucket: "foo") |> yield()`, ok: true},
-		{q: `from(bucket: "foo")`, ok: true},
+		{
+			name: "simple",
+			q:    `from(bucket: "foo")`,
+		},
+		{
+			name: "syntax error",
+			q:    `t={]`,
+			err:  "expected RBRACE",
+		},
+		{
+			name: "type error",
+			q:    `t=0 t.s`,
+			err:  "type error",
+		},
+		{
+			name: "from with no streaming data",
+			q:    `x = from(bucket: "foo")`,
+			err:  "no streaming data",
+		},
+		{
+			name: "from with yield",
+			q:    `x = from(bucket: "foo") |> yield()`,
+		},
+		{
+			name: "extern",
+			extern: &ast.File{
+				Body: []ast.Statement{
+					&ast.OptionStatement{
+						Assignment: &ast.VariableAssignment{
+							ID:   &ast.Identifier{Name: "twentySix"},
+							Init: &ast.IntegerLiteral{Value: 26},
+						},
+					},
+				},
+			},
+			q: `twentySeven = twentySix + 1
+				twentySeven
+				from(bucket: "foo")`,
+		},
+		{
+			name: "extern with error",
+			extern: &ast.File{
+				Body: []ast.Statement{
+					&ast.OptionStatement{
+						Assignment: &ast.VariableAssignment{
+							ID:   &ast.Identifier{Name: "twentySix"},
+							Init: &ast.IntegerLiteral{Value: 26},
+						},
+					},
+				},
+			},
+			q: `twentySeven = twentyFive + 2
+				twentySeven
+				from(bucket: "foo")`,
+			err: "undefined identifier",
+		},
+		{
+			name: "with now",
+			now:  time.Unix(1000, 0),
+			q:    `from(bucket: "foo")`,
+		},
 	} {
-		c := lang.FluxCompiler{
-			Query: tc.q,
-		}
-		program, err := c.Compile(ctx)
-		if err != nil {
-			t.Fatalf("failed to compile AST: %v", err)
-		}
-		// we need to start the program to get compile errors derived from AST evaluation
-		if _, err = program.Start(context.Background(), &memory.Allocator{}); tc.ok && err != nil {
-			t.Errorf("expected query %q to compile successfully but got error %v", tc.q, err)
-		} else if !tc.ok && err == nil {
-			t.Errorf("expected query %q to compile with error but got no error", tc.q)
-		}
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			c := lang.FluxCompiler{
+				Now:    tc.now,
+				Extern: tc.extern,
+				Query:  tc.q,
+			}
+
+			// serialize and deserialize and make sure they are equal
+			bs, err := json.Marshal(c)
+			if err != nil {
+				t.Error(err)
+			}
+			cc := lang.FluxCompiler{}
+			err = json.Unmarshal(bs, &cc)
+			if err != nil {
+				t.Error(err)
+			}
+			if diff := cmp.Diff(c, cc); diff != "" {
+				t.Errorf("compiler serialized/deserialized does not match: -want/+got:\n%v", diff)
+			}
+
+			program, err := c.Compile(ctx)
+			if err != nil {
+				if tc.err != "" {
+					if !strings.Contains(err.Error(), tc.err) {
+						t.Fatalf(`expected query to error with "%v" but got "%v"`, tc.err, err)
+					} else {
+						return
+					}
+				}
+				t.Fatalf("failed to compile AST: %v", err)
+			}
+
+			astProg := program.(*lang.AstProgram)
+			if astProg.Now != tc.now {
+				t.Errorf(`unexpected value for now, want "%v", got "%v"`, tc.now, astProg.Now)
+			}
+
+			// we need to start the program to get compile errors derived from AST evaluation
+			ctx := executetest.NewTestExecuteDependencies().Inject(context.Background())
+			if _, err = program.Start(ctx, &memory.Allocator{}); tc.err == "" && err != nil {
+				t.Errorf("expected query %q to start successfully but got error %v", tc.q, err)
+			} else if tc.err != "" && err == nil {
+				t.Errorf("expected query %q to start with error but got no error", tc.q)
+			} else if tc.err != "" && err != nil && !strings.Contains(err.Error(), tc.err) {
+				t.Errorf(`expected query to error with "%v" but got "%v"`, tc.err, err)
+			}
+		})
 	}
 }
 
@@ -67,7 +164,9 @@ func TestCompilationError(t *testing.T) {
 		// This shouldn't happen, has the script should be evaluated at program Start.
 		t.Fatal(err)
 	}
-	_, err = program.Start(context.Background(), &memory.Allocator{})
+
+	ctx := executetest.NewTestExecuteDependencies().Inject(context.Background())
+	_, err = program.Start(ctx, &memory.Allocator{})
 	if err == nil {
 		t.Fatal("compilation error expected, got none")
 	}
@@ -171,6 +270,20 @@ csv.from(csv: "foo,bar") |> range(start: 2017-10-10T00:00:00Z)
 				Now: tc.now,
 			}
 
+			// serialize and deserialize and make sure they are equal
+			bs, err := json.Marshal(c)
+			if err != nil {
+				t.Error(err)
+			}
+			cc := lang.ASTCompiler{}
+			err = json.Unmarshal(bs, &cc)
+			if err != nil {
+				t.Error(err)
+			}
+			if diff := cmp.Diff(c, cc); diff != "" {
+				t.Errorf("compiler serialized/deserialized does not match: -want/+got:\n%v", diff)
+			}
+
 			if tc.file != nil {
 				c.PrependFile(tc.file)
 			}
@@ -179,8 +292,9 @@ csv.from(csv: "foo,bar") |> range(start: 2017-10-10T00:00:00Z)
 			if err != nil {
 				t.Fatalf("failed to compile AST: %v", err)
 			}
+			ctx := executetest.NewTestExecuteDependencies().Inject(context.Background())
 			// we need to start the program to get compile errors derived from AST evaluation
-			if _, err := program.Start(context.Background(), &memory.Allocator{}); err != nil {
+			if _, err := program.Start(ctx, &memory.Allocator{}); err != nil {
 				t.Fatalf("failed to start program: %v", err)
 			}
 
@@ -209,7 +323,8 @@ func TestCompileOptions(t *testing.T) {
 	}
 
 	// start program in order to evaluate planner options
-	if _, err := program.Start(context.Background(), &memory.Allocator{}); err != nil {
+	ctx := executetest.NewTestExecuteDependencies().Inject(context.Background())
+	if _, err := program.Start(ctx, &memory.Allocator{}); err != nil {
 		t.Fatalf("failed to start program: %v", err)
 	}
 
@@ -242,6 +357,352 @@ func (rule removeCount) Pattern() plan.Pattern {
 }
 func (rule removeCount) Rewrite(node plan.Node) (plan.Node, bool, error) {
 	return node.Predecessors()[0], true, nil
+}
+
+func TestCompileOptions_FromFluxOptions(t *testing.T) {
+	nowFn := func() time.Time {
+		return parser.MustParseTime("2018-10-10T00:00:00Z").Value
+	}
+
+	plan.RegisterPhysicalRules(&plantest.MergeFromRangePhysicalRule{})
+	plan.RegisterLogicalRules(&removeCount{})
+
+	tcs := []struct {
+		name    string
+		files   []string
+		want    *plan.Spec
+		wantErr string
+	}{
+		{
+			name: "no planner option set",
+			files: []string{`
+import "planner"
+
+from(bucket: "bkt") |> range(start: 0) |> filter(fn: (r) => r._value > 0) |> count()`},
+			want: plantest.CreatePlanSpec(&plantest.PlanSpec{
+				Nodes: []plan.Node{
+					&plan.PhysicalPlanNode{Spec: &influxdb.FromProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.FilterProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.YieldProcedureSpec{}},
+				},
+				Edges: [][2]int{
+					{0, 1},
+					{1, 2},
+				},
+				Resources: flux.ResourceManagement{ConcurrencyQuota: 1, MemoryBytesQuota: math.MaxInt64},
+				Now:       nowFn(),
+			}),
+		},
+		{
+			name: "remove push down range",
+			files: []string{`
+import "planner"
+
+option planner.disablePhysicalRules = ["fromRangeRule"]
+
+from(bucket: "bkt") |> range(start: 0) |> filter(fn: (r) => r._value > 0) |> count()`},
+			want: plantest.CreatePlanSpec(&plantest.PlanSpec{
+				Nodes: []plan.Node{
+					&plan.PhysicalPlanNode{Spec: &influxdb.FromProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.RangeProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.FilterProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.YieldProcedureSpec{}},
+				},
+				Edges: [][2]int{
+					{0, 1},
+					{1, 2},
+					{2, 3},
+				},
+				Resources: flux.ResourceManagement{ConcurrencyQuota: 1, MemoryBytesQuota: math.MaxInt64},
+				Now:       nowFn(),
+			}),
+		},
+		{
+			name: "remove push down range and count",
+			files: []string{`
+import "planner"
+
+option planner.disablePhysicalRules = ["fromRangeRule"]
+option planner.disableLogicalRules = ["removeCountRule"]
+
+from(bucket: "bkt") |> range(start: 0) |> filter(fn: (r) => r._value > 0) |> count()`},
+			want: plantest.CreatePlanSpec(&plantest.PlanSpec{
+				Nodes: []plan.Node{
+					&plan.PhysicalPlanNode{Spec: &influxdb.FromProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.RangeProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.FilterProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.CountProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.YieldProcedureSpec{}},
+				},
+				Edges: [][2]int{
+					{0, 1},
+					{1, 2},
+					{2, 3},
+					{3, 4},
+				},
+				Resources: flux.ResourceManagement{ConcurrencyQuota: 1, MemoryBytesQuota: math.MaxInt64},
+				Now:       nowFn(),
+			}),
+		},
+		{
+			name: "remove push down range and count - with non existent rule",
+			files: []string{`
+import "planner"
+
+option planner.disablePhysicalRules = ["fromRangeRule", "non_existent"]
+option planner.disableLogicalRules = ["removeCountRule", "non_existent"]
+
+from(bucket: "bkt") |> range(start: 0) |> filter(fn: (r) => r._value > 0) |> count()`},
+			want: plantest.CreatePlanSpec(&plantest.PlanSpec{
+				Nodes: []plan.Node{
+					&plan.PhysicalPlanNode{Spec: &influxdb.FromProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.RangeProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.FilterProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.CountProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.YieldProcedureSpec{}},
+				},
+				Edges: [][2]int{
+					{0, 1},
+					{1, 2},
+					{2, 3},
+					{3, 4},
+				},
+				Resources: flux.ResourceManagement{ConcurrencyQuota: 1, MemoryBytesQuota: math.MaxInt64},
+				Now:       nowFn(),
+			}),
+		},
+		{
+			name: "remove non existent rules does not produce any effect",
+			files: []string{`
+import "planner"
+
+option planner.disablePhysicalRules = ["foo", "bar", "mew", "buz", "foxtrot"]
+option planner.disableLogicalRules = ["foo", "bar", "mew", "buz", "foxtrot"]
+
+from(bucket: "bkt") |> range(start: 0) |> filter(fn: (r) => r._value > 0) |> count()`},
+			want: plantest.CreatePlanSpec(&plantest.PlanSpec{
+				Nodes: []plan.Node{
+					&plan.PhysicalPlanNode{Spec: &influxdb.FromProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.FilterProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.YieldProcedureSpec{}},
+				},
+				Edges: [][2]int{
+					{0, 1},
+					{1, 2},
+				},
+				Resources: flux.ResourceManagement{ConcurrencyQuota: 1, MemoryBytesQuota: math.MaxInt64},
+				Now:       nowFn(),
+			}),
+		},
+		{
+			name: "empty planner option does not produce any effect",
+			files: []string{`
+import "planner"
+
+option planner.disablePhysicalRules = [""]
+option planner.disableLogicalRules = [""]
+
+from(bucket: "bkt") |> range(start: 0) |> filter(fn: (r) => r._value > 0) |> count()`},
+			want: plantest.CreatePlanSpec(&plantest.PlanSpec{
+				Nodes: []plan.Node{
+					&plan.PhysicalPlanNode{Spec: &influxdb.FromProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.FilterProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.YieldProcedureSpec{}},
+				},
+				Edges: [][2]int{
+					{0, 1},
+					{1, 2},
+				},
+				Resources: flux.ResourceManagement{ConcurrencyQuota: 1, MemoryBytesQuota: math.MaxInt64},
+				Now:       nowFn(),
+			}),
+		},
+		{
+			name: "logical planner option must be an array",
+			files: []string{`
+import "planner"
+
+option planner.disableLogicalRules = "not an array"
+
+// remember to return streaming data
+from(bucket: "does_not_matter")`},
+			wantErr: `'planner.disableLogicalRules' must be an array of string, got string`,
+		},
+		{
+			name: "physical planner option must be an array",
+			files: []string{`
+import "planner"
+
+option planner.disablePhysicalRules = "not an array"
+
+// remember to return streaming data
+from(bucket: "does_not_matter")`},
+			wantErr: `'planner.disablePhysicalRules' must be an array of string, got string`,
+		},
+		{
+			name: "logical planner option must be an array of strings",
+			files: []string{`
+import "planner"
+
+option planner.disableLogicalRules = [1.0]
+
+// remember to return streaming data
+from(bucket: "does_not_matter")`},
+			wantErr: `'planner.disableLogicalRules' must be an array of string, got an array of float`,
+		},
+		{
+			name: "physical planner option must be an array of strings",
+			files: []string{`
+import "planner"
+
+option planner.disablePhysicalRules = [1.0]
+
+// remember to return streaming data
+from(bucket: "does_not_matter")`},
+			wantErr: `'planner.disablePhysicalRules' must be an array of string, got an array of float`,
+		},
+		{
+			name: "planner is an object defined by the user",
+			files: []string{`
+planner = {
+	disablePhysicalRules: ["fromRangeRule"],
+	disableLogicalRules: ["removeCountRule"]
+}
+
+from(bucket: "bkt") |> range(start: 0) |> filter(fn: (r) => r._value > 0) |> count()`},
+			// This shouldn't change the plan.
+			want: plantest.CreatePlanSpec(&plantest.PlanSpec{
+				Nodes: []plan.Node{
+					&plan.PhysicalPlanNode{Spec: &influxdb.FromProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.FilterProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.YieldProcedureSpec{}},
+				},
+				Edges: [][2]int{
+					{0, 1},
+					{1, 2},
+				},
+				Resources: flux.ResourceManagement{ConcurrencyQuota: 1, MemoryBytesQuota: math.MaxInt64},
+				Now:       nowFn(),
+			}),
+		},
+		{
+			name: "use planner option with alias",
+			files: []string{`
+import pl "planner"
+
+option pl.disablePhysicalRules = ["fromRangeRule"]
+option pl.disableLogicalRules = ["removeCountRule"]
+
+from(bucket: "bkt") |> range(start: 0) |> filter(fn: (r) => r._value > 0) |> count()`},
+			want: plantest.CreatePlanSpec(&plantest.PlanSpec{
+				Nodes: []plan.Node{
+					&plan.PhysicalPlanNode{Spec: &influxdb.FromProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.RangeProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.FilterProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.CountProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.YieldProcedureSpec{}},
+				},
+				Edges: [][2]int{
+					{0, 1},
+					{1, 2},
+					{2, 3},
+					{3, 4},
+				},
+				Resources: flux.ResourceManagement{ConcurrencyQuota: 1, MemoryBytesQuota: math.MaxInt64},
+				Now:       nowFn(),
+			}),
+		},
+		{
+			name: "multiple files - splitting options setting",
+			files: []string{
+				`package main
+import pl "planner"
+
+option pl.disablePhysicalRules = ["fromRangeRule"]
+
+from(bucket: "bkt") |> range(start: 0) |> filter(fn: (r) => r._value > 0) |> count()`,
+				`package foo
+import "planner"
+
+option planner.disableLogicalRules = ["removeCountRule"]`},
+			want: plantest.CreatePlanSpec(&plantest.PlanSpec{
+				Nodes: []plan.Node{
+					&plan.PhysicalPlanNode{Spec: &influxdb.FromProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.RangeProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.FilterProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.CountProcedureSpec{}},
+					&plan.PhysicalPlanNode{Spec: &universe.YieldProcedureSpec{}},
+				},
+				Edges: [][2]int{
+					{0, 1},
+					{1, 2},
+					{2, 3},
+					{3, 4},
+				},
+				Resources: flux.ResourceManagement{ConcurrencyQuota: 1, MemoryBytesQuota: math.MaxInt64},
+				Now:       nowFn(),
+			}),
+		},
+	}
+
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			if strings.HasPrefix(tc.name, "multiple files") {
+				t.Skip("how should options behave with multiple files?")
+			}
+			if len(tc.files) == 0 {
+				t.Fatal("the test should have at least one file")
+			}
+			astPkg, err := flux.Parse(tc.files[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if len(tc.files) > 1 {
+				for _, file := range tc.files[1:] {
+					otherPkg, err := flux.Parse(file)
+					if err != nil {
+						t.Fatal(err)
+					}
+					astPkg.Files = append(astPkg.Files, otherPkg.Files...)
+				}
+			}
+
+			program := lang.CompileAST(astPkg, nowFn())
+			ctx := executetest.NewTestExecuteDependencies().Inject(context.Background())
+			if _, err := program.Start(ctx, &memory.Allocator{}); err != nil {
+				if tc.wantErr == "" {
+					t.Fatalf("failed to start program: %v", err)
+				} else if got := getRootErr(err); tc.wantErr != got.Error() {
+					t.Fatalf("expected wrong error -want/+got:\n\t- %s\n\t+ %s", tc.wantErr, got)
+				}
+				return
+			} else if tc.wantErr != "" {
+				t.Fatalf("expected error, got none")
+			}
+
+			if err := plantest.ComparePlansShallow(tc.want, program.PlanSpec); err != nil {
+				t.Errorf("unexpected plans: %v", err)
+			}
+		})
+	}
+}
+
+func getRootErr(err error) error {
+	if err == nil {
+		return err
+	}
+	fe, ok := err.(*flux.Error)
+	if !ok {
+		return err
+	}
+	if fe == nil {
+		return fe
+	}
+	if fe.Err == nil {
+		return fe
+	}
+	return getRootErr(fe.Err)
 }
 
 // TestTableObjectCompiler evaluates a simple `from |> range |> filter` script on csv data, and
@@ -282,11 +743,6 @@ func TestTableObjectCompiler(t *testing.T) {
 
 	filteredDataRaw := `#datatype,string,long,dateTime:RFC3339,dateTime:RFC3339,dateTime:RFC3339,long,string,string,string,string
 #group,false,false,true,true,false,false,false,false,true,true
-#default,_result,0,2017-10-10T00:00:00Z,2018-05-22T19:54:00Z,,,,,host.local,disk0
-,result,table,_start,_stop,_time,_value,_field,_measurement,host,name
-
-#datatype,string,long,dateTime:RFC3339,dateTime:RFC3339,dateTime:RFC3339,long,string,string,string,string
-#group,false,false,true,true,false,false,false,false,true,true
 #default,_result,,,,,,,,,
 ,result,table,_start,_stop,_time,_value,_field,_measurement,host,name
 ,,1,2017-10-10T00:00:00Z,2018-05-22T19:54:00Z,2018-05-22T19:53:26Z,648,io_time,diskio,host.local,disk2
@@ -305,7 +761,7 @@ csv.from(csv: data)
 	wantRange := getTablesFromRawOrFail(t, rangedDataRaw)
 	wantFilter := getTablesFromRawOrFail(t, filteredDataRaw)
 
-	vs, _, err := flux.Eval(script)
+	vs, _, err := flux.Eval(dependenciestest.Default().Inject(context.Background()), script)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,7 +826,8 @@ func getTableObjectTablesOrFail(t *testing.T, to *flux.TableObject) []*executete
 		t.Fatal(err)
 	}
 
-	q, err := program.Start(context.Background(), &memory.Allocator{})
+	ctx := executetest.NewTestExecuteDependencies().Inject(context.Background())
+	q, err := program.Start(ctx, &memory.Allocator{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,11 +1,10 @@
-// This source gets input from a socket connection and produces tables given a decoder.
+// Package socket implements a source that gets input from a socket connection and produces tables given a decoder.
 // This is a good candidate for streaming use cases. For now, it produces a single table for everything
 // that it receives from the start to the end of the connection.
 package socket
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net"
 	neturl "net/url"
@@ -13,13 +12,14 @@ import (
 	"time"
 
 	"github.com/influxdata/flux"
+	"github.com/influxdata/flux/codes"
 	"github.com/influxdata/flux/csv"
 	"github.com/influxdata/flux/execute"
+	"github.com/influxdata/flux/internal/errors"
 	"github.com/influxdata/flux/line"
 	"github.com/influxdata/flux/plan"
 	"github.com/influxdata/flux/semantic"
 	"github.com/influxdata/flux/values"
-	"github.com/pkg/errors"
 )
 
 const FromSocketKind = "fromSocket"
@@ -84,7 +84,7 @@ func createFromSocketOpSpec(args flux.Arguments, a *flux.Administration) (flux.O
 	}
 
 	if !contains(decoders, spec.Decoder) {
-		return nil, fmt.Errorf("invalid decoder %s, must be one of %v", spec.Decoder, decoders)
+		return nil, errors.Newf(codes.Invalid, "invalid decoder %s, must be one of %v", spec.Decoder, decoders)
 	}
 
 	return spec, nil
@@ -107,7 +107,7 @@ type FromSocketProcedureSpec struct {
 func newFromSocketProcedure(qs flux.OperationSpec, pa plan.Administration) (plan.ProcedureSpec, error) {
 	spec, ok := qs.(*FromSocketOpSpec)
 	if !ok {
-		return nil, fmt.Errorf("invalid spec type %T", qs)
+		return nil, errors.Newf(codes.Internal, "invalid spec type %T", qs)
 	}
 
 	return &FromSocketProcedureSpec{
@@ -130,31 +130,36 @@ func (s *FromSocketProcedureSpec) Copy() plan.ProcedureSpec {
 func createFromSocketSource(s plan.ProcedureSpec, dsid execute.DatasetID, a execute.Administration) (execute.Source, error) {
 	spec, ok := s.(*FromSocketProcedureSpec)
 	if !ok {
-		return nil, fmt.Errorf("invalid spec type %T", s)
+		return nil, errors.Newf(codes.Internal, "invalid spec type %T", s)
 	}
 
 	// known issue with url.Parse for detecting the presence of a scheme: https://github.com/golang/go/issues/19779
 	var scheme, address string
 	if !strings.Contains(spec.URL, "://") {
-		// no scheme specified, use default and use the entire url as address
-		scheme = schemes[0]
-		address = spec.URL
-	} else {
-		// scheme specified, use appropriate values
-		url, err := neturl.Parse(spec.URL)
-		if err != nil {
-			return nil, err
-		}
-		scheme = url.Scheme
-		address = url.Host
-		if !contains(schemes, scheme) {
-			return nil, fmt.Errorf("invalid scheme %s, must be one of %v", scheme, schemes)
-		}
+		// no scheme specified, use default scheme and use the entire url as address
+		spec.URL = schemes[0] + "://" + spec.URL
+	}
+	url, err := neturl.Parse(spec.URL)
+	if err != nil {
+		return nil, errors.Newf(codes.Invalid, "invalid url: %v", err)
+	}
+	deps := flux.GetDependencies(a.Context())
+	validator, err := deps.URLValidator()
+	if err != nil {
+		return nil, err
+	}
+	if err := validator.Validate(url); err != nil {
+		return nil, errors.Newf(codes.Invalid, "url did not pass validation: %v", err)
+	}
+	scheme = url.Scheme
+	address = url.Host
+	if !contains(schemes, scheme) {
+		return nil, errors.Newf(codes.Invalid, "invalid scheme %s, must be one of %v", scheme, schemes)
 	}
 
 	conn, err := net.Dial(scheme, address)
 	if err != nil {
-		return nil, errors.Wrap(err, "error in creating socket source")
+		return nil, errors.Wrap(err, codes.Inherit, "error in creating socket source")
 	}
 
 	return NewSocketSource(spec, conn, &nowTimeProvider{}, dsid)
@@ -173,7 +178,7 @@ func NewSocketSource(spec *FromSocketProcedureSpec, rc io.ReadCloser, tp line.Ti
 	}
 
 	if decoder == nil {
-		return nil, fmt.Errorf("unknown decoder type: %v", spec.Decoder)
+		return nil, errors.Newf(codes.Invalid, "unknown decoder type: %v", spec.Decoder)
 	}
 
 	return &socketSource{
@@ -198,7 +203,7 @@ func (ss *socketSource) Run(ctx context.Context) {
 	defer ss.rc.Close()
 	result, err := ss.decoder.Decode(ss.rc)
 	if err != nil {
-		err = errors.Wrap(err, "decode error")
+		err = errors.Wrap(err, codes.Inherit, "decode error")
 	} else {
 		err = result.Tables().Do(func(tbl flux.Table) error {
 			for _, t := range ss.ts {

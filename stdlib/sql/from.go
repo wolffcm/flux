@@ -1,22 +1,23 @@
 package sql
 
 import (
+	"context"
 	"database/sql"
-	"fmt"
 
-	"reflect"
-	"time"
-
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/influxdata/flux"
+	"github.com/influxdata/flux/codes"
 	"github.com/influxdata/flux/execute"
+	"github.com/influxdata/flux/internal/errors"
+	"github.com/influxdata/flux/memory"
 	"github.com/influxdata/flux/plan"
 	"github.com/influxdata/flux/semantic"
-	"github.com/influxdata/flux/values"
 	_ "github.com/lib/pq"
 )
 
 const FromSQLKind = "fromSQL"
+
+// For SQL DATETIME parsing
+const layout = "2006-01-02 15:04:05.999999999"
 
 type FromSQLOpSpec struct {
 	DriverName     string `json:"driverName,omitempty"`
@@ -48,19 +49,16 @@ func createFromSQLOpSpec(args flux.Arguments, administration *flux.Administratio
 	} else {
 		spec.DriverName = driverName
 	}
-
 	if dataSourceName, err := args.GetRequiredString("dataSourceName"); err != nil {
 		return nil, err
 	} else {
 		spec.DataSourceName = dataSourceName
 	}
-
 	if query, err := args.GetRequiredString("query"); err != nil {
 		return nil, err
 	} else {
 		spec.Query = query
 	}
-
 	return spec, nil
 }
 
@@ -82,7 +80,7 @@ type FromSQLProcedureSpec struct {
 func newFromSQLProcedure(qs flux.OperationSpec, pa plan.Administration) (plan.ProcedureSpec, error) {
 	spec, ok := qs.(*FromSQLOpSpec)
 	if !ok {
-		return nil, fmt.Errorf("invalid spec type %T", qs)
+		return nil, errors.Newf(codes.Internal, "invalid spec type %T", qs)
 	}
 
 	return &FromSQLProcedureSpec{
@@ -107,140 +105,115 @@ func (s *FromSQLProcedureSpec) Copy() plan.ProcedureSpec {
 func createFromSQLSource(prSpec plan.ProcedureSpec, dsid execute.DatasetID, a execute.Administration) (execute.Source, error) {
 	spec, ok := prSpec.(*FromSQLProcedureSpec)
 	if !ok {
-		return nil, fmt.Errorf("invalid spec type %T", prSpec)
+		return nil, errors.Newf(codes.Internal, "invalid spec type %T", prSpec)
 	}
 
-	if spec.DriverName != "postgres" && spec.DriverName != "mysql" {
-		return nil, fmt.Errorf("sql driver %s not supported", spec.DriverName)
+	// validate the data driver name and source name.
+	deps := flux.GetDependencies(a.Context())
+	validator, err := deps.URLValidator()
+	if err != nil {
+		return nil, err
+	}
+	if err := validateDataSource(validator, spec.DriverName, spec.DataSourceName); err != nil {
+		return nil, err
 	}
 
-	SQLIterator := SQLIterator{id: dsid, spec: spec, administration: a}
+	// Retrieve the row reader implementation for the driver.
+	var newRowReader func(rows *sql.Rows) (execute.RowReader, error)
+	switch spec.DriverName {
+	case "mysql":
+		newRowReader = NewMySQLRowReader
+	case "sqlite3":
+		newRowReader = NewSqliteRowReader
+	case "postgres", "sqlmock":
+		newRowReader = NewPostgresRowReader
+	default:
+		return nil, errors.Newf(codes.Invalid, "sql driver %s not supported", spec.DriverName)
+	}
 
-	return execute.CreateSourceFromDecoder(&SQLIterator, dsid, a)
+	readFn := func(ctx context.Context, rows *sql.Rows) (flux.Table, error) {
+		reader, err := newRowReader(rows)
+		if err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		return read(ctx, reader, a.Allocator())
+	}
+	iterator := &sqlIterator{spec: spec, id: dsid, read: readFn}
+	return execute.CreateSourceFromIterator(iterator, dsid)
 }
 
-type SQLIterator struct {
-	id             execute.DatasetID
-	administration execute.Administration
-	spec           *FromSQLProcedureSpec
-	db             *sql.DB
-	rows           *sql.Rows
+var _ execute.SourceIterator = (*sqlIterator)(nil)
+
+type sqlIterator struct {
+	spec *FromSQLProcedureSpec
+	id   execute.DatasetID
+	read func(ctx context.Context, rows *sql.Rows) (flux.Table, error)
 }
 
-func (c *SQLIterator) Connect() error {
+func (c *sqlIterator) connect(ctx context.Context) (*sql.DB, error) {
 	db, err := sql.Open(c.spec.DriverName, c.spec.DataSourceName)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if err = db.Ping(); err != nil {
-		return err
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, err
 	}
-	c.db = db
-
-	return nil
+	return db, nil
 }
 
-func (c *SQLIterator) Fetch() (bool, error) {
-	rows, err := c.db.Query(c.spec.Query)
+func (c *sqlIterator) Do(ctx context.Context, f func(flux.Table) error) error {
+	// Connect to the database so we can execute the query.
+	db, err := c.connect(ctx)
 	if err != nil {
-		return false, err
+		return err
 	}
-	c.rows = rows
+	defer func() { _ = db.Close() }()
 
-	return false, nil
+	rows, err := db.QueryContext(ctx, c.spec.Query)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+
+	table, err := c.read(ctx, rows)
+	if err != nil {
+		return err
+	}
+	return f(table)
 }
 
-func (c *SQLIterator) Decode() (flux.Table, error) {
-	groupKey := execute.NewGroupKey(nil, nil)
-	builder := execute.NewColListTableBuilder(groupKey, c.administration.Allocator())
+// read will use the RowReader to construct a flux.Table.
+func read(ctx context.Context, reader execute.RowReader, alloc *memory.Allocator) (flux.Table, error) {
+	// Ensure that the reader is always freed so the underlying
+	// cursor can be returned.
+	defer func() { _ = reader.Close() }()
 
-	firstRow := true
-	for c.rows.Next() {
-		columnNames, err := c.rows.Columns()
+	groupKey := execute.NewGroupKey(nil, nil)
+	builder := execute.NewColListTableBuilder(groupKey, alloc)
+	for i, dataType := range reader.ColumnTypes() {
+		if _, err := builder.AddCol(flux.ColMeta{Label: reader.ColumnNames()[i], Type: dataType}); err != nil {
+			return nil, err
+		}
+	}
+	for reader.Next() {
+		row, err := reader.GetNextRow()
 		if err != nil {
 			return nil, err
 		}
-		columns := make([]interface{}, len(columnNames))
-		columnPointers := make([]interface{}, len(columnNames))
-		for i := 0; i < len(columnNames); i++ {
-			columnPointers[i] = &columns[i]
-		}
-		if err := c.rows.Scan(columnPointers...); err != nil {
-			return nil, err
-		}
 
-		if firstRow {
-			for i, col := range columns {
-				var dataType flux.ColType
-				switch col.(type) {
-				case bool:
-					dataType = flux.TBool
-				case int64:
-					dataType = flux.TInt
-				case uint64:
-					dataType = flux.TUInt
-				case float64:
-					dataType = flux.TFloat
-				case string:
-					dataType = flux.TString
-				case []uint8:
-					// Hack for MySQL, might need to work with charset?
-					dataType = flux.TString
-				case time.Time:
-					dataType = flux.TTime
-				default:
-					fmt.Println(i, reflect.TypeOf(col))
-					execute.PanicUnknownType(flux.TInvalid)
-				}
-
-				_, err := builder.AddCol(flux.ColMeta{Label: columnNames[i], Type: dataType})
-				if err != nil {
-					return nil, err
-				}
-			}
-			firstRow = false
-		}
-
-		for i, col := range columns {
-			switch col := col.(type) {
-			case bool:
-				if err := builder.AppendBool(i, col); err != nil {
-					return nil, err
-				}
-			case int64:
-				if err := builder.AppendInt(i, col); err != nil {
-					return nil, err
-				}
-			case uint64:
-				if err := builder.AppendUInt(i, col); err != nil {
-					return nil, err
-				}
-			case float64:
-				if err := builder.AppendFloat(i, col); err != nil {
-					return nil, err
-				}
-			case string:
-				if err := builder.AppendString(i, col); err != nil {
-					return nil, err
-				}
-			case []uint8:
-				// Hack for MySQL, might need to work with charset?
-				if err := builder.AppendString(i, string(col)); err != nil {
-					return nil, err
-				}
-			case time.Time:
-				if err := builder.AppendTime(i, values.ConvertTime(col)); err != nil {
-					return nil, err
-				}
-			default:
-				execute.PanicUnknownType(flux.TInvalid)
+		for i, col := range row {
+			if err := builder.AppendValue(i, col); err != nil {
+				return nil, err
 			}
 		}
 	}
 
+	// An error may have been encountered while reading.
+	// This will get reported when we go to close the reader.
+	if err := reader.Close(); err != nil {
+		return nil, err
+	}
 	return builder.Table()
-}
-
-func (c *SQLIterator) Close() error {
-	return c.db.Close()
 }

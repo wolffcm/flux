@@ -1,11 +1,10 @@
 package universe
 
 import (
-	"errors"
-	"fmt"
-
 	"github.com/influxdata/flux"
+	"github.com/influxdata/flux/codes"
 	"github.com/influxdata/flux/execute"
+	"github.com/influxdata/flux/internal/errors"
 	"github.com/influxdata/flux/interpreter"
 	"github.com/influxdata/flux/plan"
 	"github.com/influxdata/flux/semantic"
@@ -15,7 +14,7 @@ const KeyValuesKind = "keyValues"
 
 type KeyValuesOpSpec struct {
 	KeyColumns  []string                     `json:"keyColumns"`
-	PredicateFn *semantic.FunctionExpression `json:"fn"`
+	PredicateFn interpreter.ResolvedFunction `json:"fn"`
 }
 
 func init() {
@@ -59,12 +58,12 @@ func createKeyValuesOpSpec(args flux.Arguments, a *flux.Administration) (flux.Op
 		spec.PredicateFn = fn
 	}
 
-	if spec.KeyColumns == nil && spec.PredicateFn == nil {
-		return nil, errors.New("neither column list nor predicate function provided")
+	if spec.KeyColumns == nil && spec.PredicateFn.Fn == nil {
+		return nil, errors.New(codes.Invalid, "neither column list nor predicate function provided")
 	}
 
-	if spec.KeyColumns != nil && spec.PredicateFn != nil {
-		return nil, errors.New("must provide exactly one of keyColumns list or predicate function")
+	if spec.KeyColumns != nil && spec.PredicateFn.Fn != nil {
+		return nil, errors.New(codes.Invalid, "must provide exactly one of keyColumns list or predicate function")
 	}
 
 	return spec, nil
@@ -81,13 +80,13 @@ func (s *KeyValuesOpSpec) Kind() flux.OperationKind {
 type KeyValuesProcedureSpec struct {
 	plan.DefaultCost
 	KeyColumns []string                     `json:"keyColumns"`
-	Predicate  *semantic.FunctionExpression `json:"fn"`
+	Predicate  interpreter.ResolvedFunction `json:"fn"`
 }
 
 func newKeyValuesProcedure(qs flux.OperationSpec, pa plan.Administration) (plan.ProcedureSpec, error) {
 	spec, ok := qs.(*KeyValuesOpSpec)
 	if !ok {
-		return nil, fmt.Errorf("invalid spec type %T", qs)
+		return nil, errors.Newf(codes.Internal, "invalid spec type %T", qs)
 	}
 
 	return &KeyValuesProcedureSpec{
@@ -104,7 +103,7 @@ func (s *KeyValuesProcedureSpec) Copy() plan.ProcedureSpec {
 	ns := new(KeyValuesProcedureSpec)
 	ns.KeyColumns = make([]string, len(s.KeyColumns))
 	copy(ns.KeyColumns, s.KeyColumns)
-	ns.Predicate = s.Predicate.Copy().(*semantic.FunctionExpression)
+	ns.Predicate = s.Predicate.Copy()
 	return ns
 }
 
@@ -123,7 +122,7 @@ type keyValuesTransformation struct {
 func createKeyValuesTransformation(id execute.DatasetID, mode execute.AccumulationMode, spec plan.ProcedureSpec, a execute.Administration) (execute.Transformation, execute.Dataset, error) {
 	s, ok := spec.(*KeyValuesProcedureSpec)
 	if !ok {
-		return nil, nil, fmt.Errorf("invalid spec type %T", spec)
+		return nil, nil, errors.Newf(codes.Internal, "invalid spec type %T", spec)
 	}
 	cache := execute.NewTableBuilderCache(a.Allocator())
 	d := execute.NewDataset(id, mode, cache)
@@ -147,7 +146,7 @@ func (t *keyValuesTransformation) RetractTable(id execute.DatasetID, key flux.Gr
 func (t *keyValuesTransformation) Process(id execute.DatasetID, tbl flux.Table) error {
 	builder, created := t.cache.TableBuilder(tbl.Key())
 	if !created {
-		return fmt.Errorf("distinct found duplicate table with key: %v", tbl.Key())
+		return errors.Newf(codes.Internal, "distinct found duplicate table with key: %v", tbl.Key())
 	}
 
 	// TODO: use fn to populate t.spec.keyColumns
@@ -164,7 +163,7 @@ func (t *keyValuesTransformation) Process(id execute.DatasetID, tbl flux.Table) 
 		for i, column := range cols {
 			columnNames[i] = column.Label
 		}
-		return fmt.Errorf("received table with columns %v not having key columns %v", columnNames, t.spec.KeyColumns)
+		return errors.Newf(codes.FailedPrecondition, "received table with columns %v not having key columns %v", columnNames, t.spec.KeyColumns)
 	}
 
 	keyColIndices := make([]int, len(t.spec.KeyColumns))
@@ -177,7 +176,7 @@ func (t *keyValuesTransformation) Process(id execute.DatasetID, tbl flux.Table) 
 			continue
 		}
 		if cols[keyColIndex].Type != keyColType {
-			return errors.New("keyColumns must all be the same type")
+			return errors.New(codes.FailedPrecondition, "keyColumns must all be the same type")
 		}
 	}
 

@@ -2,12 +2,15 @@
 package values
 
 import (
+	"bytes"
 	"fmt"
 	"regexp"
+	"runtime/debug"
 	"strconv"
 
+	"github.com/influxdata/flux/codes"
+	"github.com/influxdata/flux/internal/errors"
 	"github.com/influxdata/flux/semantic"
-	"github.com/pkg/errors"
 )
 
 type Typer interface {
@@ -19,6 +22,7 @@ type Value interface {
 	Typer
 	IsNull() bool
 	Str() string
+	Bytes() []byte
 	Int() int64
 	UInt() uint64
 	Float() float64
@@ -53,6 +57,10 @@ func (v value) IsNull() bool {
 func (v value) Str() string {
 	CheckKind(v.t.Nature(), semantic.String)
 	return v.v.(string)
+}
+func (v value) Bytes() []byte {
+	CheckKind(v.t.Nature(), semantic.Bytes)
+	return v.v.([]byte)
 }
 func (v value) Int() int64 {
 	CheckKind(v.t.Nature(), semantic.Int)
@@ -114,6 +122,8 @@ func (v value) Equal(r Value) bool {
 		return v.Float() == r.Float()
 	case semantic.String:
 		return v.Str() == r.Str()
+	case semantic.Bytes:
+		return bytes.Equal(v.Bytes(), r.Bytes())
 	case semantic.Time:
 		return v.Time() == r.Time()
 	case semantic.Duration:
@@ -135,15 +145,26 @@ func (v value) String() string {
 	return fmt.Sprintf("%v", v.v)
 }
 
-// InvalidValue is a non nil value who's type is semantic.Invalid
-var InvalidValue = value{t: semantic.Invalid}
+var (
+	// InvalidValue is a non nil value who's type is semantic.Invalid
+	InvalidValue = value{t: semantic.Invalid}
+
+	// Null is an untyped nil value.
+	Null = value{t: semantic.Nil}
+)
 
 // New constructs a new Value by inferring the type from the interface. If the interface
 // does not translate to a valid Value type, then InvalidValue is returned.
 func New(v interface{}) Value {
+	if v == nil {
+		return Null
+	}
+
 	switch v := v.(type) {
 	case string:
 		return NewString(v)
+	case []byte:
+		return NewBytes(v)
 	case int64:
 		return NewInt(v)
 	case uint64:
@@ -208,7 +229,7 @@ func NewFromString(t semantic.Type, s string) (Value, error) {
 		}
 
 	default:
-		return nil, errors.New("invalid type for value stringer")
+		return nil, errors.New(codes.Invalid, "invalid type for value stringer")
 	}
 	return v, nil
 }
@@ -216,6 +237,12 @@ func NewFromString(t semantic.Type, s string) (Value, error) {
 func NewString(v string) Value {
 	return value{
 		t: semantic.String,
+		v: v,
+	}
+}
+func NewBytes(v []byte) Value {
+	return value{
+		t: semantic.Bytes,
 		v: v,
 	}
 }
@@ -234,12 +261,6 @@ func NewUInt(v uint64) Value {
 func NewFloat(v float64) Value {
 	return value{
 		t: semantic.Float,
-		v: v,
-	}
-}
-func NewBool(v bool) Value {
-	return value{
-		t: semantic.Bool,
 		v: v,
 	}
 }
@@ -262,13 +283,79 @@ func NewRegexp(v *regexp.Regexp) Value {
 	}
 }
 
+// AssignableTo returns true if type V is assignable to type T.
+func AssignableTo(V, T semantic.Type) bool {
+	switch tn := T.Nature(); tn {
+	case semantic.Int,
+		semantic.UInt,
+		semantic.Float,
+		semantic.String,
+		semantic.Bool,
+		semantic.Time,
+		semantic.Duration:
+		vn := V.Nature()
+		return vn == tn || vn == semantic.Nil
+	case semantic.Array:
+		if V.Nature() != semantic.Array {
+			return false
+		}
+		// Exact match is required at the moment.
+		return V.ElementType() == T.ElementType()
+	case semantic.Object:
+		if V.Nature() != semantic.Object {
+			return false
+		}
+		properties := V.Properties()
+		for name, ttyp := range T.Properties() {
+			vtyp, ok := properties[name]
+			if !ok {
+				vtyp = semantic.Nil
+			}
+
+			if !AssignableTo(vtyp, ttyp) {
+				return false
+			}
+		}
+		return true
+	default:
+		return V.Nature() == T.Nature()
+	}
+}
+
 func UnexpectedKind(got, exp semantic.Nature) error {
-	return fmt.Errorf("unexpected kind: got %q expected %q", got, exp)
+	return errors.Newf(codes.Internal, "unexpected kind: got %q expected %q, trace: %s", got, exp, string(debug.Stack()))
 }
 
 // CheckKind panics if got != exp.
 func CheckKind(got, exp semantic.Nature) {
-	if got != exp {
+	if got == exp {
+		return
+	}
+
+	// Try to see if the two natures are functionally
+	// equivalent to see if we are allowed to assign
+	// this type to the other type.
+	equiv := func(l, r semantic.Nature) bool {
+		switch l {
+		case semantic.Nil:
+			switch r {
+			case semantic.Int,
+				semantic.UInt,
+				semantic.Float,
+				semantic.String,
+				semantic.Bool,
+				semantic.Time,
+				semantic.Duration:
+				return true
+			}
+		}
+		return false
+	}
+
+	// If got and exp are not equivalent in either
+	// direction, then panic because we got the wrong
+	// kind.
+	if !equiv(got, exp) && !equiv(exp, got) {
 		panic(UnexpectedKind(got, exp))
 	}
 }

@@ -3,6 +3,7 @@ package v1
 import (
 	"bufio"
 	"context"
+	stderrors "errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -10,11 +11,12 @@ import (
 	"strings"
 
 	"github.com/influxdata/flux"
+	"github.com/influxdata/flux/codes"
 	"github.com/influxdata/flux/execute"
 	"github.com/influxdata/flux/influxql"
+	"github.com/influxdata/flux/internal/errors"
 	"github.com/influxdata/flux/plan"
 	"github.com/influxdata/flux/semantic"
-	"github.com/pkg/errors"
 )
 
 const FromInfluxJSONKind = "fromInfluxJSON"
@@ -51,16 +53,16 @@ func createFromInfluxJSONOpSpec(args flux.Arguments, a *flux.Administration) (fl
 	}
 
 	if spec.JSON == "" && spec.File == "" {
-		return nil, errors.New("must provide json raw text or filename")
+		return nil, stderrors.New("must provide json raw text or filename")
 	}
 
 	if spec.JSON != "" && spec.File != "" {
-		return nil, errors.New("must provide exactly one of the parameters json or file")
+		return nil, stderrors.New("must provide exactly one of the parameters json or file")
 	}
 
 	if spec.File != "" {
 		if _, err := os.Stat(spec.File); err != nil {
-			return nil, errors.Wrapf(err, "failed to stat json file: %s", spec.File)
+			return nil, errors.Wrapf(err, codes.Inherit, "failed to stat json file: %s", spec.File)
 		}
 	}
 
@@ -118,8 +120,14 @@ func createFromInfluxJSONSource(prSpec plan.ProcedureSpec, dsid execute.DatasetI
 
 	var jsonReader io.Reader
 
+	deps := flux.GetDependencies(a.Context())
+	fs, err := deps.FilesystemService()
+	if err != nil {
+		return nil, err
+	}
+
 	if spec.File != "" {
-		f, err := os.Open(spec.File)
+		f, err := fs.Open(spec.File)
 		if err != nil {
 			return nil, err
 		}
@@ -183,7 +191,9 @@ func (c *JSONSource) Run(ctx context.Context) {
 
 	if c.results.More() {
 		// It doesn't make sense to read multiple results
-		err = errors.Wrap(err, "'fromInfluxJSON' supports only single results")
+		if err != nil {
+			err = errors.Wrap(err, codes.Inherit, "'fromInfluxJSON' supports only single results")
+		}
 	}
 
 FINISH:

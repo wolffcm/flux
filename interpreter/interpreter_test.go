@@ -1,6 +1,7 @@
 package interpreter_test
 
 import (
+	"context"
 	"errors"
 	"regexp"
 	"strings"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/influxdata/flux/ast"
+	"github.com/influxdata/flux/dependencies/dependenciestest"
 	"github.com/influxdata/flux/interpreter"
 	"github.com/influxdata/flux/interpreter/interptest"
 	"github.com/influxdata/flux/parser"
@@ -16,7 +18,7 @@ import (
 	"github.com/influxdata/flux/values"
 )
 
-var testScope = interpreter.NewNestedScope(nil, values.NewObjectWithValues(
+var testScope = values.NewNestedScope(nil, values.NewObjectWithValues(
 	map[string]values.Value{
 		"true":  values.NewBool(true),
 		"false": values.NewBool(false),
@@ -32,6 +34,10 @@ func addOption(name string, opt values.Value) {
 	testScope.Set(name, opt)
 }
 
+func addValue(name string, v values.Value) {
+	addOption(name, v)
+}
+
 func init() {
 	addFunc(&function{
 		name: "fortyTwo",
@@ -39,7 +45,7 @@ func init() {
 			Required: nil,
 			Return:   semantic.Float,
 		}),
-		call: func(args values.Object) (values.Value, error) {
+		call: func(ctx context.Context, args values.Object) (values.Value, error) {
 			return values.NewFloat(42.0), nil
 		},
 		hasSideEffect: false,
@@ -50,7 +56,7 @@ func init() {
 			Required: nil,
 			Return:   semantic.Float,
 		}),
-		call: func(args values.Object) (values.Value, error) {
+		call: func(ctx context.Context, args values.Object) (values.Value, error) {
 			return values.NewFloat(6.0), nil
 		},
 		hasSideEffect: false,
@@ -61,7 +67,7 @@ func init() {
 			Required: nil,
 			Return:   semantic.Float,
 		}),
-		call: func(args values.Object) (values.Value, error) {
+		call: func(ctx context.Context, args values.Object) (values.Value, error) {
 			return values.NewFloat(9.0), nil
 		},
 		hasSideEffect: false,
@@ -72,7 +78,7 @@ func init() {
 			Required: nil,
 			Return:   semantic.Bool,
 		}),
-		call: func(args values.Object) (values.Value, error) {
+		call: func(ctx context.Context, args values.Object) (values.Value, error) {
 			return nil, errors.New("fail")
 		},
 		hasSideEffect: false,
@@ -85,7 +91,7 @@ func init() {
 			Return:       semantic.Float,
 			PipeArgument: "x",
 		}),
-		call: func(args values.Object) (values.Value, error) {
+		call: func(ctx context.Context, args values.Object) (values.Value, error) {
 			v, ok := args.Get("x")
 			if !ok {
 				return nil, errors.New("missing argument x")
@@ -100,7 +106,7 @@ func init() {
 			Required: nil,
 			Return:   semantic.Int,
 		}),
-		call: func(args values.Object) (values.Value, error) {
+		call: func(ctx context.Context, args values.Object) (values.Value, error) {
 			return values.NewInt(0), nil
 		},
 		hasSideEffect: true,
@@ -110,6 +116,7 @@ func init() {
 	optionsObject.Set("repeat", values.NewInt(100))
 
 	addOption("task", optionsObject)
+	addValue("NULL", values.NewNull(semantic.Int))
 }
 
 // TestEval tests whether a program can run to completion or not
@@ -120,6 +127,24 @@ func TestEval(t *testing.T) {
 		wantErr bool
 		want    []values.Value
 	}{
+		{
+			name: "string interpolation",
+			query: `
+				str = "str"
+				ing = "ing"
+				"str + ing = ${str+ing}"`,
+			want: []values.Value{
+				values.NewString("str + ing = string"),
+			},
+		},
+		{
+			name: "string interpolation error",
+			query: `
+				a = 1
+				b = 2
+				"a + b = ${a + b}"`,
+			wantErr: true,
+		},
 		{
 			name:  "call builtin function",
 			query: "six()",
@@ -222,6 +247,9 @@ func TestEval(t *testing.T) {
             x == 5 or fail()
 			`,
 		},
+		// TODO(jsternberg): This test seems to not
+		// infer the type constraints correctly for m.a,
+		// but it doesn't fail.
 		{
 			name: "return map from func",
 			query: `
@@ -436,6 +464,16 @@ func TestEval(t *testing.T) {
 				}),
 			},
 		},
+		{
+			name: "exists",
+			query: `
+				exists 1
+				exists NULL`,
+			want: []values.Value{
+				values.NewBool(true),
+				values.NewBool(false),
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -451,27 +489,77 @@ func TestEval(t *testing.T) {
 			}
 
 			// Create new interpreter for each test case
-			itrp := interpreter.NewInterpreter()
+			itrp := interpreter.NewInterpreter(interpreter.NewPackage(""))
 
-			sideEffects, err := itrp.Eval(graph, testScope.Copy(), nil)
+			sideEffects, err := itrp.Eval(dependenciestest.Default().Inject(context.Background()), graph, testScope.Copy(), nil)
 			if !tc.wantErr && err != nil {
 				t.Fatal(err)
 			} else if tc.wantErr && err == nil {
 				t.Fatal("expected error")
 			}
 
-			if tc.want != nil && !cmp.Equal(tc.want, getSideEffectsValues(sideEffects), semantictest.CmpOptions...) {
-				t.Fatalf("unexpected side effect values -want/+got: \n%s", cmp.Diff(tc.want, sideEffects, semantictest.CmpOptions...))
+			vs := getSideEffectsValues(sideEffects)
+			if tc.want != nil && !cmp.Equal(tc.want, vs, semantictest.CmpOptions...) {
+				t.Fatalf("unexpected side effect values -want/+got: \n%s", cmp.Diff(tc.want, vs, semantictest.CmpOptions...))
 			}
 		})
 	}
+}
 
+// TestEval_Parallel ensures that function values returned from the interpreter can be used in parallel in multiple Eval calls.
+func TestEval_Parallel(t *testing.T) {
+	var scope = values.NewScope()
+
+	{
+		var ident = "ident = (x) => x"
+		pkg := parser.ParseSource(ident)
+		if ast.Check(pkg) > 0 {
+			t.Fatal(ast.GetError(pkg))
+		}
+		graph, err := semantic.New(pkg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx := dependenciestest.Default().Inject(context.Background())
+		itrp := interpreter.NewInterpreter(interpreter.NewPackage(""))
+		if _, err := itrp.Eval(ctx, graph, scope, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	script := "ident(x:1)"
+	pkg := parser.ParseSource(script)
+	if ast.Check(pkg) > 0 {
+		t.Fatal(ast.GetError(pkg))
+	}
+	graph, err := semantic.New(pkg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Spin up multiple interpreters all using the same parent scope
+	n := 100
+	errC := make(chan error, n)
+	for i := 0; i < n; i++ {
+		go func() {
+			itrp := interpreter.NewInterpreter(interpreter.NewPackage(""))
+			ctx := dependenciestest.Default().Inject(context.Background())
+			_, err := itrp.Eval(ctx, graph, scope.Nest(nil), nil)
+			errC <- err
+		}()
+	}
+	for i := 0; i < n; i++ {
+		err := <-errC
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func TestNestedExternBlocks(t *testing.T) {
 	testcases := []struct {
 		packageNode *semantic.Package
-		externScope interpreter.Scope
+		externScope values.Scope
 		wantError   error
 	}{
 		{
@@ -499,7 +587,7 @@ func TestNestedExternBlocks(t *testing.T) {
 					},
 				},
 			},
-			externScope: interpreter.NewNestedScope(nil, values.NewObjectWithValues(
+			externScope: values.NewNestedScope(nil, values.NewObjectWithValues(
 				map[string]values.Value{
 					// initial 'a' value with type int
 					"a": values.NewInt(0),
@@ -532,7 +620,7 @@ func TestNestedExternBlocks(t *testing.T) {
 					},
 				},
 			},
-			externScope: interpreter.NewNestedScope(nil, values.NewObjectWithValues(
+			externScope: values.NewNestedScope(nil, values.NewObjectWithValues(
 				map[string]values.Value{
 					// initial 'a' value with type string
 					"a": values.NewString("0"),
@@ -548,8 +636,8 @@ func TestNestedExternBlocks(t *testing.T) {
 	for _, tc := range testcases {
 		tc := tc
 		t.Run("", func(t *testing.T) {
-			itrp := interpreter.NewInterpreter()
-			_, err := itrp.Eval(tc.packageNode, tc.externScope, nil)
+			itrp := interpreter.NewInterpreter(interpreter.NewPackage(""))
+			_, err := itrp.Eval(dependenciestest.Default().Inject(context.Background()), tc.packageNode, tc.externScope, nil)
 			if tc.wantError != nil {
 				if err == nil {
 					t.Errorf("expected error=(%v) but got nothing", tc.wantError)
@@ -637,8 +725,8 @@ func TestInterpreter_TypeErrors(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			itrp := interpreter.NewInterpreter()
-			if _, err := itrp.Eval(graph, interpreter.NewScope(), nil); err == nil {
+			itrp := interpreter.NewInterpreter(interpreter.NewPackage(""))
+			if _, err := itrp.Eval(dependenciestest.Default().Inject(context.Background()), graph, values.NewScope(), nil); err == nil {
 				if tc.err != "" {
 					t.Error("expected type error, but program executed successfully")
 				}
@@ -711,26 +799,28 @@ func TestInterpreter_MultiPhaseInterpretation(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			itrp := interpreter.NewInterpreter()
+			ctx := dependenciestest.Default().Inject(context.Background())
+			itrp := interpreter.NewInterpreter(interpreter.NewPackage(""))
 			scope := testScope.Copy()
 
 			for _, builtin := range tc.builtins {
-				if _, err := interptest.Eval(itrp, scope, nil, builtin); err != nil {
+				if _, err := interptest.Eval(ctx, itrp, scope, nil, builtin); err != nil {
 					t.Fatal("evaluation of builtin failed: ", err)
 				}
 			}
 
-			sideEffects, err := interptest.Eval(itrp, scope, nil, tc.program)
+			sideEffects, err := interptest.Eval(ctx, itrp, scope, nil, tc.program)
 			if err != nil && !tc.wantErr {
 				t.Fatal("program evaluation failed: ", err)
 			} else if err == nil && tc.wantErr {
 				t.Fatal("expected to error during program evaluation")
 			}
 
-			if tc.want != nil && !cmp.Equal(tc.want, getSideEffectsValues(sideEffects), semantictest.CmpOptions...) {
-				t.Fatalf("unexpected side effect values -want/+got: \n%s", cmp.Diff(tc.want, sideEffects, semantictest.CmpOptions...))
+			if tc.want != nil {
+				if want, got := tc.want, getSideEffectsValues(sideEffects); !cmp.Equal(want, got, semantictest.CmpOptions...) {
+					t.Fatalf("unexpected side effect values -want/+got: \n%s", cmp.Diff(want, got, semantictest.CmpOptions...))
+				}
 			}
-
 		})
 	}
 }
@@ -815,11 +905,12 @@ func TestInterpreter_MultipleEval(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			itrp := interpreter.NewInterpreter()
+			ctx := dependenciestest.Default().Inject(context.Background())
+			itrp := interpreter.NewInterpreter(interpreter.NewPackage(""))
 			scope := testScope.Copy()
 
 			for _, line := range tc.lines {
-				if ses, err := interptest.Eval(itrp, scope, nil, line.script); err != nil {
+				if ses, err := interptest.Eval(ctx, itrp, scope, nil, line.script); err != nil {
 					t.Fatal("evaluation of builtin failed: ", err)
 				} else {
 					if !cmp.Equal(line.sideEffects, ses, semantictest.CmpOptions...) {
@@ -846,7 +937,7 @@ func TestResolver(t *testing.T) {
 			Required: []string{"f"},
 			Return:   semantic.Int,
 		}),
-		call: func(args values.Object) (values.Value, error) {
+		call: func(ctx context.Context, args values.Object) (values.Value, error) {
 			f, ok := args.Get("f")
 			if !ok {
 				return nil, errors.New("missing argument f")
@@ -864,8 +955,8 @@ func TestResolver(t *testing.T) {
 		},
 		hasSideEffect: false,
 	}
-	scope := make(map[string]values.Value)
-	scope[f.name] = f
+	s := make(map[string]values.Value)
+	s[f.name] = f
 
 	pkg := parser.ParseSource(`
 	x = 42
@@ -880,10 +971,12 @@ func TestResolver(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	itrp := interpreter.NewInterpreter()
-	ns := interpreter.NewNestedScope(nil, values.NewObjectWithValues(scope))
+	ctx := dependenciestest.Default().Inject(context.Background())
+	itrp := interpreter.NewInterpreter(interpreter.NewPackage(""))
 
-	if _, err := itrp.Eval(graph, ns, nil); err != nil {
+	ns := values.NewNestedScope(nil, values.NewObjectWithValues(s))
+
+	if _, err := itrp.Eval(ctx, graph, ns, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -915,7 +1008,7 @@ func getSideEffectsValues(ses []interpreter.SideEffect) []values.Value {
 type function struct {
 	name          string
 	t             semantic.PolyType
-	call          func(args values.Object) (values.Value, error)
+	call          func(ctx context.Context, args values.Object) (values.Value, error)
 	hasSideEffect bool
 }
 
@@ -932,6 +1025,9 @@ func (f *function) IsNull() bool {
 }
 func (f *function) Str() string {
 	panic(values.UnexpectedKind(semantic.Function, semantic.String))
+}
+func (f *function) Bytes() []byte {
+	panic(values.UnexpectedKind(semantic.Function, semantic.Bytes))
 }
 func (f *function) Int() int64 {
 	panic(values.UnexpectedKind(semantic.Function, semantic.Int))
@@ -974,6 +1070,6 @@ func (f *function) HasSideEffect() bool {
 	return f.hasSideEffect
 }
 
-func (f *function) Call(args values.Object) (values.Value, error) {
-	return f.call(args)
+func (f *function) Call(ctx context.Context, args values.Object) (values.Value, error) {
+	return f.call(ctx, args)
 }

@@ -11,18 +11,18 @@ import (
 	"strconv"
 	"strings"
 
-	_ "github.com/influxdata/flux/stdlib" // Import the Flux standard library
-
 	"github.com/influxdata/flux"
 	"github.com/influxdata/flux/ast"
 	"github.com/influxdata/flux/ast/edit"
+	"github.com/influxdata/flux/codes"
 	"github.com/influxdata/flux/csv"
 	"github.com/influxdata/flux/execute"
+	"github.com/influxdata/flux/internal/errors"
 	"github.com/influxdata/flux/lang"
+	"github.com/influxdata/flux/memory"
 	"github.com/influxdata/flux/parser"
-	"github.com/influxdata/flux/querytest"
+	_ "github.com/influxdata/flux/stdlib" // Import the Flux standard library
 	"github.com/influxdata/flux/stdlib/testing"
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -169,18 +169,24 @@ func loadScript(fname string) (*ast.Package, error) {
 func executeScript(pkg *ast.Package) (string, string, error) {
 	testPkg, err := inPlaceTestGen(pkg)
 	if err != nil {
-		return "", "", errors.Wrap(err, "error during test generation")
+		return "", "", errors.Wrap(err, codes.Inherit, "error during test generation")
 	}
 
-	querier := querytest.NewQuerier()
 	c := lang.FluxCompiler{
 		Query: ast.Format(testPkg),
 	}
 
-	q, err := querier.C.Query(context.Background(), c)
+	ctx := flux.NewDefaultDependencies().Inject(context.Background())
+	program, err := c.Compile(ctx)
 	if err != nil {
 		fmt.Println(ast.Format(testPkg))
-		return "", "", errors.Wrap(err, "error during compilation, check your script and retry")
+		return "", "", errors.Wrap(err, codes.Inherit, "error during compilation, check your script and retry")
+	}
+
+	alloc := &memory.Allocator{}
+	q, err := program.Start(ctx, alloc)
+	if err != nil {
+		return "", "", errors.Wrap(err, codes.Inherit, "error while executing program")
 	}
 	defer q.Done()
 	results := make(map[string]flux.Result)
@@ -188,7 +194,7 @@ func executeScript(pkg *ast.Package) (string, string, error) {
 		results[r.Name()] = r
 	}
 	if err := q.Err(); err != nil {
-		return "", "", errors.Wrap(err, "error retrieving query result")
+		return "", "", errors.Wrap(err, codes.Inherit, "error retrieving query result")
 	}
 
 	var diffBuf, resultBuf bytes.Buffer
@@ -199,7 +205,7 @@ func executeScript(pkg *ast.Package) (string, string, error) {
 			return nil
 		}); err != nil {
 			// do not return diff error, but show it
-			fmt.Fprintln(os.Stderr, errors.Wrap(err, "error while running test script"))
+			fmt.Fprintln(os.Stderr, errors.Wrap(err, codes.Inherit, "error while running test script"))
 		}
 	}
 
@@ -208,7 +214,7 @@ func executeScript(pkg *ast.Package) (string, string, error) {
 	// encode test result if present
 	if tr, in := results["_test_result"]; in {
 		if _, err := enc.Encode(&resultBuf, tr); err != nil {
-			fmt.Fprintln(os.Stderr, errors.Wrap(err, "encoding error while running test script"))
+			fmt.Fprintln(os.Stderr, errors.Wrap(err, codes.Inherit, "encoding error while running test script"))
 		}
 	} else {
 		// cannot use MultiResultEncoder, because it encodes errors, but I need that
@@ -217,9 +223,8 @@ func executeScript(pkg *ast.Package) (string, string, error) {
 		fmt.Fprintf(os.Stderr, "The tool will check for assertEquals errors.\n\n")
 		for _, r := range results {
 			if _, err := enc.Encode(&resultBuf, r); err != nil {
-				fmt.Fprintln(os.Stderr, errors.Wrap(err, "encoding error while running test script"))
-				cause := errors.Cause(err)
-				if e, ok := cause.(*testing.AssertEqualsError); ok {
+				fmt.Fprintln(os.Stderr, errors.Wrap(err, codes.Inherit, "encoding error while running test script"))
+				if e := asAssertEqualsErrors(err); e != nil {
 					aee = e
 				}
 			}
@@ -381,4 +386,21 @@ func yesOrNo(question string, forceY bool) (bool, error) {
 	} else {
 		return ans == "y\n" || (!forceY && ans == "\n"), nil
 	}
+}
+
+// asAssertEqualsError will return the error as a *testing.AssertEqualsError
+// if it is in the error chain.
+func asAssertEqualsErrors(err error) *testing.AssertEqualsError {
+	for err != nil {
+		if aee, ok := err.(*testing.AssertEqualsError); ok {
+			return aee
+		}
+
+		wrapErr, ok := err.(interface{ Unwrap() error })
+		if !ok {
+			break
+		}
+		err = wrapErr.Unwrap()
+	}
+	return nil
 }

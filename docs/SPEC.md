@@ -103,7 +103,7 @@ The following keywords are reserved and may not be used as identifiers:
 The following character sequences represent operators:
 
     +   ==   !=   (   )   =>
-    -   <    !~   [   ]
+    -   <    !~   [   ]   ^
     *   >    =~   {   }
     /   <=   =    ,   :
     %   >=   <-   .   |>
@@ -167,36 +167,40 @@ When several durations are specified together, larger units must appear before s
     duration_lit  = { int_lit duration_unit } .
     duration_unit = "y" | "mo" | "w" | "d" | "h" | "m" | "s" | "ms" | "us" | "µs" | "ns" .
 
-| Units    | Meaning                                 |
-| -----    | -------                                 |
-| y        | year (12 months)                        |
-| mo       | month                                   |
-| w        | week (7 days)                           |
-| d        | day                                     |
-| h        | hour (60 minutes)                       |
-| m        | minute (60 seconds)                     |
-| s        | second                                  |
-| ms       | milliseconds (1 thousandth of a second) |
-| us or µs | microseconds (1 millionth of a second)  |
-| ns       | nanoseconds (1 billionth of a second)   |
+| Units    | Meaning                                 | Base |
+| -----    | -------                                 | ---- |
+| y        | year (12 months)                        | mo   |
+| mo       | month                                   | mo   |
+| w        | week (7 days)                           | ns   |
+| d        | day                                     | ns   |
+| h        | hour (60 minutes)                       | ns   |
+| m        | minute (60 seconds)                     | ns   |
+| s        | second                                  | ns   |
+| ms       | milliseconds (1 thousandth of a second) | ns   |
+| us or µs | microseconds (1 millionth of a second)  | ns   |
+| ns       | nanoseconds (1 billionth of a second)   | ns   |
 
 Durations represent a length of time.
 Lengths of time are dependent on specific instants in time they occur and as such, durations do not represent a fixed amount of time.
-No amount of seconds is equal to a day, as days vary in their number of seconds.
-No amount of days is equal to a month, as months vary in their number of days.
-A duration consists of three basic time units: seconds, days and months.
+A duration is composed of a tuple of months and nanoseconds along with whether the duration is positive or negative.
+Each duration unit corresponds to one of these two base units.
+It is possible to compose a duration of multiple base units.
 
-Durations can be combined via addition and subtraction.
-Durations can be multiplied by an integer value.
+Durations cannot be combined by addition and subtraction.
+This is because all of the values in the tuple must have the same sign and it is not possible to guarantee that is true when addition and subtraction are allowed.
+Durations can be multiplied by any integer value.
+The unary negative operator is the equivalent of multiplying the duration by -1.
 These operations are performed on each time unit independently.
 
 Examples:
 
     1s
     10d
-    1h15m // 1 hour and 15 minutes
+    1h15m  // 1 hour and 15 minutes
     5w
-    1mo5d // 1 month and 5 days
+    1mo5d  // 1 month and 5 days
+    -1mo5d // negative 1 month and 5 days
+    5w * 2 // 10 weeks
 
 Durations can be added to date times to produce a new date time.
 
@@ -215,10 +219,12 @@ Examples:
     2018-01-31T00:00:00Z + 1mo      // 2018-02-28T00:00:00Z, February 31th is rolled back to the last day of the month, February 28th in 2018.
 
     // Addition and subtraction of durations to date times does not commute
-    2018-02-28T00:00:00Z + 1mo + 1d // 2018-03-29T00:00:00Z
-    2018-02-28T00:00:00Z + 1d + 1mo // 2018-04-01T00:00:00Z
-    2018-01-01T00:00:00Z + 2mo - 1d // 2018-02-28T00:00:00Z
-    2018-01-01T00:00:00Z - 1d + 3mo // 2018-03-31T00:00:00Z
+    2018-02-28T00:00:00Z + 1mo + 1d  // 2018-03-29T00:00:00Z
+    2018-02-28T00:00:00Z + 1d + 1mo  // 2018-04-01T00:00:00Z
+    2018-01-01T00:00:00Z + 2mo - 1d  // 2018-02-28T00:00:00Z
+    2018-01-01T00:00:00Z - 1d + 3mo  // 2018-03-31T00:00:00Z
+    2018-01-31T00:00:00Z + 1mo + 1mo // 2018-03-28T00:00:00Z
+    2018-01-31T00:00:00Z + 2mo       // 2018-03-31T00:00:00Z
 
     // Addition and subtraction of durations to date times applies months, days and seconds in that order.
     2018-01-28T00:00:00Z + 1mo + 2d // 2018-03-02T00:00:00Z
@@ -227,6 +233,14 @@ Examples:
     2018-02-01T00:00:00Z + 2mo2d    // 2018-04-03T00:00:00Z
     2018-01-01T00:00:00Z + 1mo30d   // 2018-03-02T00:00:00Z, Months are applied first to get February 1st, then days are added resulting in March 2 in 2018.
     2018-01-31T00:00:00Z + 1mo1d    // 2018-03-01T00:00:00Z, Months are applied first to get February 28th, then days are added resulting in March 1 in 2018.
+
+    // Multiplication works
+    2018-01-01T00:00:00Z + 1mo * 1  // 2018-02-01T00:00:00Z
+    2018-01-01T00:00:00Z + 1mo * 2  // 2018-03-01T00:00:00Z
+    2018-01-01T00:00:00Z + 1mo * 3  // 2018-04-01T00:00:00Z
+    2018-01-31T00:00:00Z + 1mo * 1  // 2018-02-28T00:00:00Z
+    2018-01-31T00:00:00Z + 1mo * 2  // 2018-03-31T00:00:00Z
+    2018-01-31T00:00:00Z + 1mo * 3  // 2018-04-30T00:00:00Z
 
 [IMPL#657](https://github.com/influxdata/platform/issues/657) Implement Duration vectors
 
@@ -270,8 +284,7 @@ String literals support several escape sequences.
     \t   U+0009 horizontal tab
     \"   U+0022 double quote
     \\   U+005C backslash
-    \{   U+007B open curly bracket
-    \}   U+007D close curly bracket
+    \${  U+0024 U+007B dollar sign and opening curly bracket
 
 Additionally any byte value may be specified via a hex encoding using `\x` as the prefix.
 
@@ -281,12 +294,7 @@ Additionally any byte value may be specified via a hex encoding using `\x` as th
     hex_digit        = "0" … "9" | "A" … "F" | "a" … "f" .
     unicode_value    = unicode_char | escaped_char .
     escaped_char     = `\` ( "n" | "r" | "t" | `\` | `"` ) .
-    StringExpression = "{" Expression "}" .
-
-TODO(nathanielc): With string interpolation string_lit is not longer a lexical token as part of a literal, but an entire expression in and of itself.
-
-
-[IMPL#252](https://github.com/influxdata/platform/issues/252) Parse string literals
+    StringExpression = "${" Expression "}" .
 
 
 Examples:
@@ -298,12 +306,12 @@ Examples:
     "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e" // the explicit UTF-8 encoding of the previous line
 
 String literals are also interpolated for embedded expressions to be evaluated as strings.
-Embedded expressions are enclosed in curly brackets "{}".
+Embedded expressions are enclosed within the literals `${` and `}` respectively.
 The expressions are evaluated in the scope containing the string literal.
 The result of an expression is formatted as a string and replaces the string content between the brackets.
 All types are formatted as strings according to their literal representation.
 A function "printf" exists to allow more precise control over formatting of various types.
-To include the literal curly brackets within a string they must be escaped.
+To include the literal `${` within a string it must be escaped.
 
 
 [IMPL#248](https://github.com/influxdata/platform/issues/248) Add printf function
@@ -311,12 +319,11 @@ To include the literal curly brackets within a string they must be escaped.
 Interpolation example:
 
     n = 42
-    "the answer is {n}" // the answer is 42
-    "the answer is not {n+1}" // the answer is not 43
-    "openinng curly bracket \{" // openinng curly bracket {
-    "closing curly bracket \}" // closing curly bracket }
+    "the answer is ${n}" // the answer is 42
+    "the answer is not ${n+1}" // the answer is not 43
+    "dollar sign opening curly bracket \${" // dollar sign opening curly bracket ${
 
-[IMPL#251](https://github.com/influxdata/platform/issues/251) Add string interpolation support
+[IMPL#1775](https://github.com/influxdata/flux/issues/1775) Interpolate arbitrary expressions in string literals
 
 
 #### Regular expression literals
@@ -402,31 +409,63 @@ Types are never explicitly declared as part of the syntax.
 Types are always inferred from the usage of the value.
 Type inference follows a Hindley-Milner style inference system.
 
-#### Boolean types
+#### Union types
+
+A union type defines a set of types.
+In the rest of this section a union type will be specified as follows:
+
+    T = t1 | t2 | ... | tn
+
+where `t1`, `t2`, ..., and `tn` are types.
+In the example above a value of type `T` is either of type `t1`, type `t2`, ..., or type `tn`.
+
+#### Basic types
+
+These are the types from which all other Flux data types are constructed.
+
+##### Null type
+
+The _null type_ represents a missing or unknown value.
+The _null type_ name is `null`.
+There is only one value that comprises the _null type_ and that is the _null_ value.
+
+A type `t` is nullable if it can be expressed as follows:
+
+    t = {s} | null
+
+where `{s}` defines a set of values.
+
+##### Boolean types
 
 A _boolean type_ represents a truth value, corresponding to the preassigned variables `true` and `false`.
 The boolean type name is `bool`.
+The boolean type is nullable and can be formally specified as follows:
 
-#### Numeric types
+    bool = {true, false} | null
+
+##### Numeric types
 
 A _numeric type_ represents sets of integer or floating-point values.
 
 The following numeric types exist:
 
-    uint    the set of all unsigned 64-bit integers
-    int     the set of all signed 64-bit integers
-    float   the set of all IEEE-754 64-bit floating-point numbers
+    uint    = {the set of all unsigned 64-bit integers} | null
+    int     = {the set of all signed 64-bit integers} | null
+    float   = {the set of all IEEE-754 64-bit floating-point numbers} | null
 
-#### Time types
+Note all numeric types are nullable.
+
+##### Time types
 
 A _time type_ represents a single point in time with nanosecond precision.
 The time type name is `time`.
+The time type is nullable.
 
-
-#### Duration types
+##### Duration types
 
 A _duration type_ represents a length of time with nanosecond precision.
 The duration type name is `duration`.
+The duration type is nullable.
 
 Durations can be added to times to produce a new time.
 
@@ -436,44 +475,57 @@ Examples:
     2018-07-01T00:00:00Z + 2y  // 2020-07-01T00:00:00Z
     2018-07-01T00:00:00Z + 5h  // 2018-07-01T05:00:00Z
 
-#### String types
+#### Binary types
+
+A _bytes type_ represents a sequence of byte values.
+The bytes type name is `bytes`.
+
+##### String types
 
 A _string type_ represents a possibly empty sequence of characters.
 Strings are immutable: once created they cannot be modified.
 The string type name is `string`.
+The string type is nullable.
+Note that an empty string is distinct from a _null_ value.
 
 The length of a string is its size in bytes, not the number of characters, since a single character may be multiple bytes.
 
-#### Regular expression types
+##### Regular expression types
 
 A _regular expression type_ represents the set of all patterns for regular expressions.
 The regular expression type name is `regexp`.
+The regular expression type is **not** nullable.
 
-#### Array types
+#### Composite types
+
+These are types constructed from basic types.
+Composite types are not nullable.
+
+##### Array types
 
 An _array type_ represents a sequence of values of any other type.
 All values in the array must be of the same type.
 The length of an array is the number of elements in the array.
 
-#### Object types
+##### Object types
 
 An _object type_ represents a set of unordered key and value pairs.
 The key must always be a string.
 The value may be any other type, and need not be the same as other values within the object.
 
-#### Function types
+##### Function types
 
 A _function type_ represents a set of all functions with the same argument and result types.
 
 
 [IMPL#249](https://github.com/influxdata/platform/issues/249) Specify type inference rules
 
-#### Generator types
+##### Generator types
 
 A _generator type_ represents a value that produces an unknown number of other values.
 The generated values may be of any other type but must all be the same type.
 
-[IMPL#658](https://github.com/influxdata/platform/query/issues/658) Implement Generators types
+[IMPL#658](https://github.com/influxdata/platform/issues/658) Implement Generators types
 
 #### Polymorphism
 
@@ -636,10 +688,19 @@ Literals construct a value.
 
 Object literals construct a value with the object type.
 
-    ObjectLiteral = "{" PropertyList "}" .
-    PropertyList  = [ Property { "," Property } ] .
-    Property      = identifier [ ":" Expression ]
-                  | string_lit ":" Expression .
+    ObjectLiteral  = "{" ObjectBody "}" .
+    ObjectBody     = WithProperties | PropertyList .
+    WithProperties = identifier "with"  PropertyList .
+    PropertyList   = [ Property { "," Property } ] .
+    Property       = identifier [ ":" Expression ]
+                   | string_lit ":" Expression .
+
+Examples:
+
+    {a: 1, b: 2, c: 3}
+    {a, b, c}
+    {o with x: 5, y: 5}
+    {o with a, b}
 
 ##### Array literals
 
@@ -682,16 +743,30 @@ Those variables are shared between the function literal and the surrounding bloc
 #### Call expressions
 
 A call expressions invokes a function with the provided arguments.
-Arguments must be specified using the argument name, positional arguments not supported.
+Arguments must be specified using the argument name, positional arguments are not supported.
 Argument order does not matter.
 When an argument has a default value, it is not required to be specified.
 
     CallExpression = "(" PropertyList ")" .
 
+Call expressions support a short notation in case the name of the argument matches the parameter name.
+This notation can be used only when every argument matches its parameter.
+
 Examples:
 
-    f(a:1, b:9.6)
-    float(v:1)
+```
+add = (a,b) => a + b
+
+a = 1
+b = 2
+
+add(a, b)
+// is the same as
+add(a: a, b: b)
+// both FAIL: cannot mix short and long notation.
+add(a: a, b)
+add(a, b: b)
+```
 
 #### Pipe expressions
 
@@ -721,9 +796,13 @@ Index expressions access a value from an array based on a numeric index.
 #### Member expressions
 
 Member expressions access a property of an object.
+They are specified via an expression of the form `obj.k` or `obj["k"]`.
 The property being accessed must be either an identifer or a string literal.
 In either case the literal value is the name of the property being accessed, the identifer is not evaluated.
 It is not possible to access an object's property using an arbitrary expression.
+
+If `obj` contains an entry with property `k`, both `obj.k` and `obj["k"]` return the value associated with `k`.
+If `obj` does **not** contain an entry with property `k`, both `obj.k` and `obj["k"]` return _null_.
 
     MemberExpression        = DotExpression  | MemberBracketExpression
     DotExpression           = "." identifer
@@ -733,8 +812,7 @@ It is not possible to access an object's property using an arbitrary expression.
 
 Conditional expressions evaluate a boolean-valued condition and if the result is _true_,
 the expression following the `then` keyword is evaluated and returned.
-Otherwise the condition evaluates to _false_,
-and the expression following the `else` keyword is evaluated and returned.
+Otherwise the expression following the `else` keyword is evaluated and returned.
 In either case, the branch not taken is not evaluated;
 only side effects associated with the branch that is taken will occur.
 
@@ -743,6 +821,8 @@ only side effects associated with the branch that is taken will occur.
 Example:
 
     color = if code == 0 then "green" else if code == 1 then "yellow" else "red"
+
+Note according to the above definition, if a condition evaluates to a _null_ or unknown value, the _else_ branch is evaluated.
 
 #### Operators
 
@@ -754,16 +834,19 @@ The precedence of the operators is given in the table below. Operators with a lo
 |     1    |  `a()`         |       Function call       |
 |          |  `a[]`         |  Member or index access   |
 |          |   `.`          |       Member access       |
-|     2    | `*` `/`        |Multiplication and division|
-|     3    | `+` `-`        | Addition and subtraction  |
-|     4    |`==` `!=`       |   Comparison operators    |
+|     2    |   `^`          |       Exponentiation      |
+|     3    | `*` `/` `%`    | Multiplication, division, |
+|          |                | and modulo                |
+|     4    | `+` `-`        | Addition and subtraction  |
+|     5    |`==` `!=`       |   Comparison operators    |
 |          | `<` `<=`       |                           |
 |          | `>` `>=`       |                           |
 |          |`=~` `!~`       |                           |
-|     5    |  `not`         | Unary logical expression  |
-|     6    |  `and`         |        Logical AND        |
-|     7    |  `or`          |        Logical OR         |
-|     8    | `if/then/else` |        Conditional        |
+|     6    | `not`          | Unary logical operator    |
+|          | `exists`       | Null check operator       |
+|     7    |  `and`         |        Logical AND        |
+|     8    |  `or`          |        Logical OR         |
+|     9    | `if/then/else` |        Conditional        |
 
 The operator precedence is encoded directly into the grammar as the following.
 
@@ -775,7 +858,7 @@ The operator precedence is encoded directly into the grammar as the following.
     LogicalOperator          = "and" | "or" .
     UnaryLogicalExpression   = ComparisonExpression
                              | UnaryLogicalOperator UnaryLogicalExpression .
-    UnaryLogicalOperator     = "not" .
+    UnaryLogicalOperator     = "not" | "exists" .
     ComparisonExpression     = MultiplicativeExpression
                              | ComparisonExpression ComparisonOperator MultiplicativeExpression .
     ComparisonOperator       = "==" | "!=" | "<" | "<=" | ">" | ">=" | "=~" | "!~" .
@@ -784,7 +867,7 @@ The operator precedence is encoded directly into the grammar as the following.
     AdditiveOperator         = "+" | "-" .
     MultiplicativeExpression = PipeExpression
                              | MultiplicativeExpression MultiplicativeOperator PipeExpression .
-    MultiplicativeOperator   = "*" | "/" .
+    MultiplicativeOperator   = "*" | "/" | "%" | "^".
     PipeExpression           = PostfixExpression
                              | PipeExpression PipeOperator UnaryExpression .
     PipeOperator             = "|>" .
@@ -796,6 +879,8 @@ The operator precedence is encoded directly into the grammar as the following.
     PostfixOperator          = MemberExpression
                              | CallExpression
                              | IndexExpression .
+
+Dividing by 0 or using the mod operator with a divisor of 0 will result in an error.
 
 ### Packages
 
@@ -921,6 +1006,7 @@ The following named types are built-in.
     time     // time
     string   // utf-8 encoded string
     regexp   // regular expression
+    bytes    // sequence of byte values
     type     // a type that itself describes a type
 
 
@@ -1002,7 +1088,7 @@ Example
 
     builtin from : (bucket: string, bucketID: string) -> stream
 
-### Time constants
+### Date/Time constants
 
 #### Days of the week
 
@@ -1020,7 +1106,6 @@ Saturday  = 6
 ```
 
 
-[IMPL#153](https://github.com/influxdata/flux/issues/153) Add Days of the Week constants
 
 ### Months of the year
 
@@ -1042,7 +1127,6 @@ November  = 11
 December  = 12
 ```
 
-[IMPL#154](https://github.com/influxdata/flux/issues/154) Add Months of the Year constants
 
 ### Time and date functions
 
@@ -1062,8 +1146,28 @@ These are builtin functions that all take a single `time` argument and return an
     YearDay returns the day of the year for the provided time in the range `[1-366]`.
 * `month` int
     Month returns the month of the year for the provided time in the range `[1-12]`.
+* `year` int
+    Year returns the year for the provided time.
+* `week` int
+    Week returns the ISO week of the year for the provided time in the range `[1-53]`
+* `quarter` int
+    Quarter returns the quarter of the year for the provided time in the range `[1-4]`
+* `millisecond` int
+    Millisecond returns the millisecond of the second for the provided time in the range `[0-999]`
+* `microsecond` int
+    Microsecond returns the microsecond of the second for the provided time in the range `[0-999999]`
+* `nanosecond` int
+    Nanosecond returns the nanosecond of the second for the provided time in the range `[0-999999999]`
 
-[IMPL#155](https://github.com/influxdata/flux/issues/155) Implement Time and date functions
+#### truncate
+
+`date.truncate` takes in a time t and a Duration unit and returns the given time 
+truncated to the given unit.
+
+Examples: 
+- `truncate(t: "2019-06-03T13:59:01.000000000Z", unit: 1s)` returns time `2019-06-03T13:59:01.000000000Z`
+- `truncate(t: "2019-06-03T13:59:01.000000000Z", unit: 1m)` returns time `2019-06-03T13:59:00.000000000Z`
+- `truncate(t: "2019-06-03T13:59:01.000000000Z", unit: 1h)` returns time `2019-06-03T13:00:00.000000000Z`
 
 ### System Time
 
@@ -1100,6 +1204,8 @@ Intervals has the following parameters:
 The Nth interval start date is the initial start date plus the offset plus an Nth multiple of the every parameter.
 Each interval stop date is equal to the interval start date plus the period duration.
 When filtering intervals each potential interval is passed to the filter function, when the function returns false, that interval is excluded from the set of intervals.
+The `every` parameter must contain duration units for only one base unit as defined in the duration literals.
+It is not possible to mix months and nanoseconds in an interval.
 
 The intervals function has the following signature:
 
@@ -1113,6 +1219,8 @@ Examples:
     intervals(every:1w, offset:1d)             // 1 week intervals starting on Monday (by default weeks start on Sunday)
     intervals(every:1d, period:-1h)            // the hour from 11PM - 12AM every night
     intervals(every:1mo, period:-1d)           // the last day of each month
+    intervals(every:1mo2w)                     // not allowed because it is composed of different base units
+    intervals(every:1mo, period:1mo2w)         // this is fine since the period can mix base units
 
 Examples using a predicate:
 
@@ -1174,7 +1282,7 @@ Examples using known start and stop dates:
     // [2018-04-15, 2018-05-15)
 
 
-[IMPL#659](https://github.com/influxdata/platform/query/issues/659) Implement intervals function
+[IMPL#659](https://github.com/influxdata/platform/issues/659) Implement intervals function
 
 
 ### Builtin Intervals
@@ -1286,13 +1394,43 @@ Within a stream each table's group key value is unique.
 
 [IMPL#463](https://github.com/influxdata/flux/issues/463) Specify the primitive types that make up stream and table types
 
-### Missing values
+### Missing values (null)
 
-A record may be missing a value for a specific column.
-Missing values are represented with a special _null_ value.
-The _null_ value can be of any data type.
+`null` is a predeclared identifier representing a missing or unknown value.
+`null` is the only value comprising the _null type_.
 
-[IMPL#300](https://github.com/influxdata/platform/issues/300) Design how nulls behave
+Any non-boolean operator that operates on basic types, returns _null_ when at least one of its operands is _null_.
+This can be explained intuitively with the following table and by thinking of a null value as an unknown value.
+
+| Expression       | Evaluates To | Because                                                                             |
+| ---------------- | ------------ | ----------------------------------------------------------------------------------- |
+| _null_ + 5       | _null_       | Adding 5 to an unknown value is still unknown                                       |
+| _null_ * 5       | _null_       | Multiplying an unknown value by 5 is still unknown                                  |
+| _null_ == 5      | _null_       | We don't know if an unknown value is equal to 5                                     |
+| _null_ < 5       | _null_       | We don't know if an unknown value is less than 5                                    |
+| _null_ == _null_ | _null_       | We don't know if something unknown is equal to something else that is also unknown  |
+
+In other words, operating on something unknown produces something that is still unknown.
+The only place where this is not the case is in boolean logic.
+
+Because boolean types are nullable, Flux implements ternary logic as a way of handling boolean operators with _null_ operands.
+Again, by interpreting a _null_ operand as an unknown value, we have the following definitions:
+
+* not _null_ = _null_
+* _null_ or false = _null_
+* _null_ or true = true
+* _null_ or _null_ = _null_
+* _null_ and false = false
+* _null_ and true = _null_
+* _null_ and _null_ = _null_
+
+And finally, because records are represented using object types, attempting to access a column whose value is unknown or missing from a record will also return _null_.
+
+Note according to the definitions above, it is not possible to check whether or not an expression is _null_ using the `==` and `!=` operators as these operators will return _null_ if any of their operands are _null_.
+In order to perform such a check, Flux provides a built-in `exists` operator defined as follows:
+
+* `exists x` returns false if `x` is _null_
+* `exists x` returns true if `x` is not _null_
 
 ### Transformations
 
@@ -1306,6 +1444,44 @@ Transformations that modify the group keys or values will need to regroup the ta
 A transformation produces side effects when it is constructed from a function that produces side effects.
 
 Transformations are represented using function types.
+
+Some transformations, for instance `map` and `filter`, are represented using higher-order functions (functions that accepts other functions).
+When specifying the function passed in, _make sure that you use the same names for its parameters_.
+
+`filter`, for instance, accepts argument `fn` which is of type `(r: record) -> bool`.
+An invocation of `filter` must take a function with one argument named `r`:
+
+```
+from(bucket: "db")
+    |> filter(fn: (r) => ...)
+```
+
+This script would fail:
+
+```
+from(bucket: "db")
+    |> filter(fn: (v) => ...)
+
+// FAILS!: 'v' != 'r'.
+```
+
+The reason is simple: Flux does not support positional arguments, so parameter names matter.
+The transformation (in our example, `filter`) must know the name of the parameter in the given function in order to invoke it properly.
+The process happens the other way around, actually:
+our `filter` implementation supposes to invoke a function in this way:
+
+```
+fn(r: <the-record>)
+```
+
+So, you have to:
+
+```
+...
+    |> filter(fn: (r) => ...)
+...
+```
+
 
 ### Built-in transformations
 
@@ -1469,6 +1645,19 @@ All aggregate operations have the following properties:
 | ----   | ----   | -----------                             |
 | column | string | Column specifies a column to aggregate. |
 
+The default behavior of aggregates is to skip over _null_ values.
+An arbitrary aggregate function `fn` is expressed logically using the reduce function:
+
+    fn = (column, tables=<-) => reduce(fn: (r, accumulator) => {
+        return if exists(r.column) then ... else ...
+    }, identity: ...)
+
+For example, the `sum` transformation is logically equivalent to:
+
+    sum = (column, tables=<-) => reduce(fn: (r, accumulator) => {
+        return if exists(r.column) then accumulator + r.column else accumulator
+    }, identity: 0)
+
 ##### AggregateWindow
 
 AggregateWindow is a function that simplifies aggregating data over fixed windows of time.
@@ -1486,6 +1675,9 @@ AggregateWindow has the following properties:
 | timeSrc     | string                                          | TimeSrc is the name of a column from the group key to use as the source for the aggregated time. Defaults to "_stop".                                           |
 | timeDst     | string                                          | TimeDst is the name of a new column in which the aggregated time is placed. Defaults to "_time".                                                                |
 | createEmpty | bool                                            | CreateEmpty, if true, will create empty windows and fill them with a null aggregate value.  Defaults to true.                                                   |
+
+_NOTE_: make sure that `fn`'s parameter names match the ones specified above (see [why](#Transformations)).
+
 Example:
 
 ```
@@ -1512,7 +1704,12 @@ Covariance has the following properties:
 Additionally exactly two columns must be provided to the `columns` property.
 
 Example:
-`from(bucket: "telegraf/autogen") |> range(start:-5m) |> covariance(columns: ["x", "y"])`
+```
+from(bucket: "telegraf/autogen") 
+    |> range(start: -5m) 
+    |> map(fn: (r) => ({r with x: r._value, y: r._value * r._value / 2})) 
+    |> covariance(columns: ["x", "y"])
+```
 
 #### Cov
 
@@ -1623,6 +1820,28 @@ from(bucket: "telegraf/autogen")
 	|> range(start: -5m)
 	|> filter(fn: (r) => r._measurement == "cpu" and r._field == "usage_system")
 	|> median()
+```
+
+##### Mode
+
+Mode produces the mode for a given column. If there are multiple modes, all of them are returned in a table in sorted order. 
+If there is no mode, null is returned. The following data types are supported: string, float64, int64, uint64, bool, time.
+Mode only considers non-null values.
+
+Mode has the following properties: 
+
+| Name   | Type   | Description                                                                  |
+| ----   | ----   | -----------                                                                  |
+| column | string | Column is the column on which to track the mode.  Defaults to `_value`. |
+
+Example: 
+```
+from(bucket:"telegraf/autogen")
+    |> filter(fn: (r) => r._measurement == "mem" AND
+            r._field == "used_percent")
+    |> range(start:-12h)
+    |> window(every:10m)
+    |> mode(column: "host")
 ```
 
 ##### Quantile (aggregate)
@@ -1883,15 +2102,22 @@ from(bucket:"telegraf/autogen")
 
 #### Filter
 
-Filter applies a predicate function to each input record, output tables contain only records which matched the predicate.
+Filter applies a predicate function to each input record.
+Only the records for which the predicate evaluates to _true_ will be included in the output tables.
 One output table is produced for each input table.
 The output tables will have the same schema as their corresponding input tables.
+If `onEmpty` is set to `drop`, then empty tables will be dropped.
+If `onEmpty` is set to `keep`, then empty tables will be output to the next transformation.
+The default is to drop empty tables.
 
 Filter has the following properties:
 
-| Name | Type                | Description                                                                                        |
-| ---- | ----                | -----------                                                                                        |
-| fn   | (r: record) -> bool | Fn is a predicate function. Records which evaluate to true, will be included in the output tables. |
+| Name    | Type                | Description                                                                                        |
+| ----    | ----                | -----------                                                                                        |
+| fn      | (r: record) -> bool | Fn is a predicate function. Records which evaluate to true, will be included in the output tables. |
+| onEmpty | string              | The behavior for empty tables. This can be `keep` or `drop`. The default is `drop`.
+
+_NOTE_: make sure that `fn`'s parameter names match the ones specified above (see [why](#Transformations)).
 
 Example:
 
@@ -1902,6 +2128,16 @@ from(bucket:"telegraf/autogen")
                 r._field == "usage_system" AND
                 r.service == "app-server")
 ```
+
+Example:
+
+```
+from(bucket:"telegraf/autogen")
+    |> range(start:-12h)
+    |> filter(fn: (r) => r._measurement == "cpu", onEmpty: "keep")
+```
+
+Note according to the definition, records for which the predicate evaluates to _null_ will not be included in the output.
 
 #### Highest/Lowest
 
@@ -1981,6 +2217,22 @@ Example:
 
     histogramQuantile(quantile:0.9)  // compute the 90th quantile using histogram data.
 
+#### HourSelection
+
+HourSelection retains all rows in the table within the specified hour range. Hours are specified in military time.
+
+HourSelection has the following properties:
+
+| Name           | Type     | Description                                                                                   |
+| ----           | ----     | -----------                                                                                   |
+| start          | int      | Start is the hour retained data should begin (inclusive).                                     |
+| stop           | int      | Stop is the hour retain data should end (inclusive).                                          |
+| timeColumn     | string   | TimeColumn is the column that HourSelection should parse. Defaults to `_time`.                |
+
+Example:
+
+    hourSelection(start: 9, stop: 17) // retains all data that took place between 9am and 5pm
+
 ##### LinearBins
 
 LinearBins produces a list of linearly separated floats.
@@ -1992,7 +2244,7 @@ LinearBins has the following properties:
 | start     | float | Start is the first value in the returned list.                                                   |
 | width     | float | Width is the distance between subsequent bin values.                                             |
 | count     | int   | Count is the number of bins to create.                                                           |
-| inifinity | bool  | Infinity when true adds an additional bin with a value of positive infinity. Defaults to `true`. |
+| infinity | bool  | Infinity when true adds an additional bin with a value of positive infinity. Defaults to `true`. |
 
 ##### LogarithmicBins
 
@@ -2005,7 +2257,7 @@ LogarithmicBins has the following properties:
 | start     | float | Start is the first value in the returned bin list.                                               |
 | factor    | float | Factor is the multiplier applied to each subsequent bin.                                         |
 | count     | int   | Count is the number of bins to create.                                                           |
-| inifinity | bool  | Infinity when true adds an additional bin with a value of positive infinity. Defaults to `true`. |
+| infinity | bool  | Infinity when true adds an additional bin with a value of positive infinity. Defaults to `true`. |
 
 #### Limit
 
@@ -2040,17 +2292,14 @@ When the output record drops a column that was part of the group key that column
 
 Map has the following properties:
 
-| Name     | Type                  | Description                                                                                               |
-| ----     | ----                  | -----------                                                                                               |
-| fn       | (r: record) -> record | Function to apply to each record.  The return value must be an object.                                    |
-| mergeKey | bool                  | MergeKey indicates if the record returned from fn should be merged with the group key.  Defaults to true. |
+| Name | Type                  | Description                                                            |
+| ---- | ----                  | -----------                                                            |
+| fn   | (r: record) -> record | Function to apply to each record. The return value must be an object.  |
 
+_NOTE_: make sure that `fn`'s parameter names match the ones specified above (see [why](#Transformations)).
 
-When merging, all columns on the group key will be added to the record giving precedence to any columns already present on the record.
-When not merging, only columns defined on the returned record will be present on the output records.
-
-
-[IMPL#816](https://github.com/influxdata/flux/issues/816) Remove mergeKey parameter from map
+The resulting table will only have columns present on the returned record of the map function.
+Use the `with` operator to preserve all columns from the input table in the output table.
 
 Example:
 ```
@@ -2060,7 +2309,8 @@ from(bucket:"telegraf/autogen")
                 r.service == "app-server")
     |> range(start:-12h)
     // Square the value
-    |> map(fn: (r) => r._value * r._value)
+    // The output table has all column from the input table because of the use of `with`.
+    |> map(fn: (r) => ({r with _value: r._value * r._value}))
 ```
 Example (creating a new table):
 ```
@@ -2070,10 +2320,12 @@ from(bucket:"telegraf/autogen")
                 r.service == "app-server")
     |> range(start:-12h)
     // create a new table by copying each row into a new format
-    |> map(fn: (r) => ({_time: r._time, app_server: r._service}))
+    // The output table now only has the columns `_time` and `app_server`.
+    |> map(fn: (r) => ({_time: r._time, app_server: r.service}))
 ```
 
 #### Reduce
+
 Reduce aggregates records in each table according to the reducer `fn`.  The output for each table will be the group key of the table, plus columns corresponding to each field in the reducer object.  
 
 If the reducer record contains a column with the same name as a group key column, then the group key column's value is overwritten, and the outgoing group key is changed.  However, if two reduced tables write to the same destination group key, then the function will error.
@@ -2085,6 +2337,7 @@ Reduce has the following properties:
 | fn       | (r: record, accumulator: 'a) -> 'a | Function to apply to each record with a reducer object of type 'a.  |
 | identity | 'a                  | an initial value to use when creating a reducer. May be used more than once in asynchronous processing use cases.|
 
+_NOTE_: make sure that `fn`'s parameter names match the ones specified above (see [why](#Transformations)).
 
 Example (compute the sum of the value column):
 ```
@@ -2119,8 +2372,6 @@ from(bucket:"telegraf/autogen")
             ({prod: r._value * accumulator.prod}), identity: {prod: 1.0}))
 ```
 
-
-
 #### Range
 
 Range filters records based on provided time bounds.
@@ -2134,13 +2385,13 @@ Tables where all records exists outside the time bounds are filtered entirely.
 
 Range has the following properties:
 
-| Name        | Type   | Description                                                                                                             |
-| ----        | ----   | -----------                                                                                                             |
-| start       | time   | Start specifies the oldest time to be included in the results.                                                          |
-| stop        | time   | Stop specifies the exclusive newest time to be included in the results. Defaults to the value of the `now` option time. |
-| timeColumn  | string | Name of the time column to use. Defaults to `_time`.                                                                    |
-| startColumn | string | StartColumn is the name of the column containing the start time. Defaults to `_start`.                                  |
-| stopColumn  | string | StopColumn is the name of the column containing the stop time. Defaults to `_stop`.                                     |
+| Name        | Type   | Description                                                                                                                                       |
+| ----        | ----   | -----------                                                                                                                                       |
+| start       | time   | Start inclusively specifies the lower bound (oldest) time of the range by which to filter records.                                                |
+| stop        | time   | Stop exclusively specifies the upper bound (newest) time of the range by which to filter records. Defaults to the value of the `now` option time. |
+| timeColumn  | string | Name of the time column to use. Defaults to `_time`.                                                                                              |
+| startColumn | string | StartColumn is the name of the column containing the start time. Defaults to `_start`.                                                            |
+| stopColumn  | string | StopColumn is the name of the column containing the stop time. Defaults to `_stop`.                                                               |
 
 Example:
 ```
@@ -2172,6 +2423,8 @@ Rename has the following properties:
 | columns | object                     | Columns is a map of old column names to new names. Cannot be used with `fn`.                   |
 | fn      | (column: string) -> string | Fn defines a function mapping between old and new column names. Cannot be used with `columns`. |
 
+_NOTE_: make sure that `fn`'s parameter names match the ones specified above (see [why](#Transformations)).
+
 Example usage:
 
 Rename a single column:
@@ -2194,7 +2447,7 @@ from(bucket: "telegraf/autogen")
 
 Drop excludes specified columns from a table. Columns to exclude can be specified either through a list, or a predicate function.
 When a dropped column is part of the group key it will also be dropped from the key.
-If a specified column is not present in a table an error will be thrown.
+If dropping a column in the group key would result in merging two tables with different schemas, an error will be thrown.
 
 Drop has the following properties:
 
@@ -2202,6 +2455,8 @@ Drop has the following properties:
 | ----    | ----                     | -----------                                                                                           |
 | columns | []string                 | Columns is an array of column to exclude from the resulting table. Cannot be used with `fn`.          |
 | fn      | (column: string) -> bool | Fn is a predicate function, columns that evaluate to true are dropped. Cannot be used with `columns`. |
+
+_NOTE_: make sure that `fn`'s parameter names match the ones specified above (see [why](#Transformations)).
 
 Example Usage:
 
@@ -2226,7 +2481,8 @@ from(bucket: "telegraf/autogen")
 Keep is the inverse of drop. It returns a table containing only columns that are specified,
 ignoring all others.
 Only columns in the group key that are also specified in `keep` will be kept in the resulting group key.
-If a specified column is not present in a table an error will be thrown.
+If not all columns in the group key are kept, this can result in merging tables that will have the same group key.
+If this would result in merging two tables with different schemas, an error will be thrown.
 
 Keep has the following properties:
 
@@ -2234,6 +2490,8 @@ Keep has the following properties:
 | ----    | ----                     | -----------                                                                                        |
 | columns | []string                 | Columns is an array of column to exclude from the resulting table. Cannot be used with `fn`.       |
 | fn      | (column: string) -> bool | Fn is a predicate function, columns that evaluate to true are kept. Cannot be used with `columns`. |
+
+_NOTE_: make sure that `fn`'s parameter names match the ones specified above (see [why](#Transformations)).
 
 Example Usage:
 
@@ -2322,6 +2580,27 @@ from(bucket:"telegraf/autogen")
                r._field == "uptime")
     |> range(start:-12h)
     |> sort(columns:["region", "host", "value"])
+```
+
+#### Tail
+Tail caps the number of records in output tables to a fixed size `n`.
+One output table is produced for each input table.
+Each output table will contain the last `n` records before the last `offset` records of the input table.
+If the input table has less than `offset + n` records, all records except the last `offset` ones will be output.
+
+Tail has the following properties:
+
+| Name   | Type | Description                                                                              |
+| ----   | ---- | -----------                                                                              |
+| n      | int  | N is the maximum number of records per table to output.                                  |
+| offset | int  | Offset is the number of records to skip per table before tailing to `n`. Defaults to 0. |
+
+Example:
+
+```
+from(bucket: "telegraf/autogen")
+    |> range(start: -1h)
+    |> tail(n: 10, offset: 1)
 ```
 
 #### Group
@@ -2460,6 +2739,8 @@ KeyValues has the following properties:
 | keyColumns | []string                     | KeyColumns is a list of columns from which values are extracted.                                 |
 | fn         | (schema: schema) -> []string | Fn is a schema function that may by used instead of `keyColumns` to identify the set of columns. |
 
+_NOTE_: make sure that `fn`'s parameter names match the ones specified above (see [why](#Transformations)).
+
 Additional requirements:
 
 * Only one of `keyColumns` or `fn` may be used in a single call.
@@ -2511,7 +2792,6 @@ Given the following input table with group key `["_measurement"]`:
 `keyColumns(keyColumns: ["tagB"])` produces the following error message:
 
     received table with columns [_time, _measurement, _value, tagA] not having key columns [tagB]
-
 
 #### Window
 
@@ -2876,6 +3156,7 @@ Difference has the following properties:
 | ----        | ----     | -----------                                                                                                                                                 |
 | nonNegative | bool     | NonNegative indicates if the difference is allowed to be negative. If a value is encountered which is less than the previous value then the result is null. |
 | columns     | []string | Columns is a list of columns on which to compute the difference. Defaults to `["_value"]`.                                                                  |
+| keepFirst   | bool     | KeepFirst indicates if the first row should be kept. If `true`, then the difference will be `null`. Defaults to `false`. 
 
 Rules for subtracting values for numeric types:
 
@@ -2911,6 +3192,16 @@ Result (`nonNegative: true`):
 |  0004 |   6  |   8  | null |  tv |
 |  0005 | null | null | null |  tv |
 
+Result (`nonNegative: false`, `keepFirst: true`):
+
+| _time |   A  |   B  |   C  | tag |
+|:-----:|:----:|:----:|:----:|:---:|
+|  0001 | null | null | null |  tv |
+|  0002 | null |   1  | null |  tv |
+|  0003 |  -2  |   0  |   2  |  tv |
+|  0004 |   6  |   8  |  -2  |  tv |
+|  0005 | null | null |  -1  |  tv |
+
 Example of script:
 
 ```
@@ -2919,6 +3210,22 @@ from(bucket: "telegraf/autogen")
     |> filter(fn: (r) => r._measurement == "cpu" and r._field == "usage_user")
     |> difference()
 ```
+#### Elapsed
+
+Elapsed returns the elapsed time between subsequent records. 
+
+Given an input table, `elapsed` will return the same table with an additional `elapsed` column and without the first 
+record as elapsed time is not defined. 
+
+Elapsed has the following properties:
+
+| Name        | Type     | Description                                                                                                                                                 |
+| ----        | ----     | -----------                                                                                                                                                 |
+| unit        | duration | The unit in which the elapsed time is returned. Defaults to `1s`.|
+| timeColumn  | string   | Name of the `flux.TTime` column on which to compute the elapsed time. Defaults to `_time`.|
+| columnName  | string   | Name of the column of elapsed times. Defaults to `elapsed`.
+
+Elapsed errors if the timeColumn cannot be found within the given table. 
 
 #### Increase
 
@@ -2952,7 +3259,604 @@ Given the following input table.
     | 00002 | 4      |
     | 00003 | 7      |
     | 00004 | 8      |
+    
+    
+####  Moving Average
 
+Moving Average computes the moving average the `_value` column.
+It means the values of a user-defined period for a defined number of points.
+
+Moving Average has the following properties:
+
+| Name        | Type     | Description
+| ----        | ----     | -----------
+| n           | int      | N specifies the number of points to mean.       
+
+Rules for taking the moving average for numeric types:
+ - the average over a period populated by `n` values is equal to their algebraic mean
+ - the average over a period populated by only null values is null
+ - moving averages that include null values skip over those values
+ - if `n` is less than the number of records in a table, `movingAverage` returns the average of the available values
+ 
+Examples of moving average (`n` = 2):
+
+| _time |   A  |   B  |   C  |   D  | tag |
+|:-----:|:----:|:----:|:----:|:----:|:---:|
+|  0001 | null |   1  |   2  | null |  tv |
+|  0002 |   6  |   2  | null | null |  tv |
+|  0003 |   4  | null |   4  |   4  |  tv |
+
+Result:
+
+| _time |   A  |   B  |   C  |   D  | tag |
+|:-----:|:----:|:----:|:----:|:----:|:---:|
+|  0002 |   6  |  1.5 |   2  | null |  tv |
+|  0003 |   5  |   2  |   4  |   4  |  tv |
+
+Example of script:
+```
+// A 5 point moving average would be called as such:
+from(bucket: "telegraf/autogen"):
+    |> range(start: -7d)
+    |> movingAverage(n: 5)
+```
+
+##### Timed Moving Average
+
+Timed Moving Average means the values of the following records for a defined number of points, for the specified column.
+```
+timedMovingAverage = (every, period, column="_value", tables=<-) =>
+    tables
+        |> window(every: every, period: period)
+        |> mean(column:column)
+        |> duplicate(column: "_stop", as: "_time")
+        |> window(every: inf)
+```
+Timed Moving Average has the following properties:
+
+| Name        | Type     | Description
+| ----        | ----     | -----------
+| every       | duration | Every specifies the frequency of windows.
+| period      | duration | Period specifies the window size to mean.       
+| column      | string   | Column specifies a column to aggregate. Defaults to `"_value"`            
+
+Example:
+```
+// A 5 year moving average would be called as such:
+from(bucket: "telegraf/autogen"):
+    |> range(start: -7y)
+    |> timedMovingAverage(every: 1y, period: 5y)
+```
+
+#### Exponential Moving Average
+
+Exponential Moving Average computes the exponential moving average of the `_value` column.
+It is a weighted moving average that gives more weighting to recent data as opposed to older data.
+
+| Name        | Type     | Description
+| ----        | ----     | -----------
+| n           | int      | N specifies the number of points to mean.       
+
+Rules for taking the exponential moving average for numeric types:
+ - the first value of an exponential moving average over `n` values is the algebraic mean of the first `n` values
+ - subsequent values are calculated as `y(t) = x(t) * k + y(t-1) * (1 - k)`, where 
+    - the constant `k` is defined as `k = 2 / (1 + n)`
+    - `y(t)` is defined as exponential moving average at time `t`
+    - `x(t)` is defined as the value at time `t`
+ - `exponentialMovingAverage` ignores ignores null values and does not count them in calculations
+ 
+ Examples (`n = 2`):
+ 
+ | _time |   A  |   B  |   C  | tag |
+ |:-----:|:----:|:----:|:----:|:---:|
+ |  0001 |   2  | null |   2  |  tv |
+ |  0002 | null |  10  |   4  |  tv |
+ |  0003 |   8  |  20  |   5  |  tv |
+ 
+ Result:
+ 
+ | _time |   A  |   B  |   C  | tag |
+ |:-----:|:----:|:----:|:----:|:---:|
+ |  0002 |   2  |  10  |   3  |  tv |
+ |  0003 |   6  | 16.67| 4.33 |  tv |
+ 
+ 
+Example of script:
+```
+// A 5 point exponential moving average would be called as such:
+from(bucket: "telegraf/autogen"):
+    |> range(start: -7d)
+    |> exponentialMovingAverage(n: 5)
+```
+
+#### Double Exponential Moving Average
+`doubleEMA`
+
+Double Exponential Moving Average computes the double exponential moving averages of the `_value` column.
+It is a weighted moving average that gives more weighting to recent data as opposed to older data, with less lag than a single exponential moving average.
+
+| Name        | Type     | Description
+| ----        | ----     | -----------
+| n           | int      | N specifies the number of points to mean.
+
+A double exponential moving average is defined as `DEMA = 2 * EMA_N - EMA of EMA_N`, where
+- `EMA` is an exponential moving average, and
+- `N = n` is the look-back period.
+
+In flux, `doubleEMA` is defined as
+```
+doubleEMA = (n, tables=<-) =>
+    tables
+          |> exponentialMovingAverage(n:n)
+          |> duplicate(column:"_value", as:"ema")
+          |> exponentialMovingAverage(n:n)
+          |> map(fn: (r) => ({r with _value: 2.0*r.ema - r._value}))
+          |> drop(columns: ["ema"])
+```
+
+The behavior of the exponential moving averages used for calculating the double exponential moving average is the same as defined for `exponentialMovingAverage`
+
+A proper double exponential moving average requires at least `2 * n - 1` values.
+ 
+ Example (`n = 10`):
+ 
+ | _time |_value|result|
+ |:-----:|:----:|:----:|
+ |  0001 |   1  |   -  |
+ |  0002 |   2  |   -  |
+ |  0003 |   3  |   -  |
+ |  0004 |   4  |   -  |
+ |  0005 |   5  |   -  |
+ |  0006 |   6  |   -  |
+ |  0007 |   7  |   -  |
+ |  0008 |   8  |   -  |
+ |  0009 |   9  |   -  |
+ |  0010 |  10  |   -  |
+ |  0011 |  11  |   -  |
+ |  0012 |  12  |   -  |
+ |  0013 |  13  |   -  |
+ |  0014 |  14  |   -  |
+ |  0015 |  15  |   -  |
+ |  0016 |  14  |   -  |
+ |  0017 |  13  |   -  |
+ |  0018 |  12  |   -  |
+ |  0019 |  11  | 13.57|
+ |  0020 |  10  | 12.70|
+ |  0021 |   9  | 11.70|
+ |  0022 |   8  | 10.61|
+ |  0023 |   7  | 9.466|
+ |  0024 |   6  | 8.286|
+ |  0025 |   5  | 7.090|
+ |  0026 |   4  | 5.890|
+ |  0027 |   3  | 4.694|
+ |  0028 |   2  | 3.506|
+ |  0029 |   1  | 2.331|
+ 
+Example of script:
+```
+// A 5 point double exponential moving average would be called as such:
+from(bucket: "telegraf/autogen"):
+    |> range(start: -7d)
+    |> doubleEMA(n: 5)
+```
+
+#### Triple Exponential Moving Average
+`tripleEMA`
+
+Triple Exponential Moving Average computes the triple exponential moving averages of the `_value` column.
+It is a weighted moving average that gives more weighting to recent data as opposed to older data, with less lag than a double or single exponential moving average.
+
+| Name        | Type     | Description
+| ----        | ----     | -----------
+| n           | int      | N specifies the number of points to mean.
+
+A triple exponential moving average is defined as `TEMA = (3 * EMA_1) - (3 * EMA_2) + EMA_3`, where
+- `EMA_1` is the exponential moving average of the original data,
+- `EMA_2` is the exponential moving average of `EMA_1`,
+- `EMA_3` is the exponential moving average of `EMA_2`, and
+- `N = n` is the look-back period.
+
+In flux, `tripleEMA` is defined as
+```
+tripleEMA = (n, tables=<-) =>
+	tables
+		|> exponentialMovingAverage(n:n)
+		|> duplicate(column:"_value", as:"ema1")
+		|> exponentialMovingAverage(n:n)
+		|> duplicate(column:"_value", as:"ema2")
+		|> exponentialMovingAverage(n:n)
+		|> map(fn: (r) => ({r with _value: 3.0*r.ema1 - 3.0*r.ema2 + r._value}))
+		|> drop(columns: ["ema1", "ema2"])
+```
+
+The behavior of the exponential moving averages used for calculating the triple exponential moving average is the same as defined for `exponentialMovingAverage`
+
+A proper double exponential moving average requires at least `3 * n - 2` values.
+ 
+ Example (`n = 4`):
+ 
+ | _time |_value|result|
+ |:-----:|:----:|:----:|
+ |  0001 |   1  |   -  |
+ |  0002 |   2  |   -  |
+ |  0003 |   3  |   -  |
+ |  0004 |   4  |   -  |
+ |  0005 |   5  |   -  |
+ |  0006 |   6  |   -  |
+ |  0007 |   7  |   -  |
+ |  0008 |   8  |   -  |
+ |  0009 |   9  |   -  |
+ |  0010 |  10  |   10 |
+ |  0011 |  11  |   11 |
+ |  0012 |  12  |   12 |
+ |  0013 |  13  |   13 |
+ |  0014 |  14  |   14 |
+ |  0015 |  15  |   15 |
+ |  0016 |  14  | 14.43|
+ |  0017 |  13  | 13.35|
+ |  0018 |  12  | 12.56|
+ |  0019 |  11  |   11 |
+ |  0020 |  10  | 9.907|
+ |  0021 |   9  | 8.866|
+ |  0022 |   8  | 7.859|
+ |  0023 |   7  | 6.871|
+ |  0024 |   6  | 5.891|
+ |  0025 |   5  | 4.913|
+ |  0026 |   4  | 3.933|
+ |  0027 |   3  | 2.950|
+ |  0028 |   2  | 1.963|
+ |  0029 |   1  | 0.973|
+ 
+Example of script:
+```
+// A 5 point triple exponential moving average would be called as such:
+from(bucket: "telegraf/autogen"):
+    |> range(start: -7d)
+    |> tripleEMA(n: 5)
+```
+
+#### Triple Exponential Derivative
+The triple exponential derivative indicator is an oscillator and can also be used as a momentum indicator. Triple exponential derivative calculates a triple exponential moving average of the log of the
+data input over the period of time. It prevents cycles that are shorter than the defined period from being considered by the indicator.
+Triple exponential derivative oscillates around a zero line.
+
+When used as an oscillator, a positive value indicates an overbought market while a negative value indicates an oversold market.
+When used as a momentum indicator, a positive value suggests momentum is increasing while a negative value suggests momentum is decreasing. 
+It acts on the `_value` column.
+
+ Name        | Type     | Description
+| ----        | ----     | -----------
+| n           | int      | N specifies the sample size of the algorithm.  
+
+A triple exponential derivative is defined as `TRIX[i] = ((EMA3[i] / EMA3[i - 1]) - 1) * 100`, where
+- `EMA_3` is `EMA(EMA(EMA(data)))`
+
+If there are not enough values to computer a proper triple exponential derivative, the `_value` column of the output table will be `null`, and all other columns will
+be the same as the last record of the input table.
+
+The behavior of the exponential moving averages used for calculating the triple exponential derivative is the same as defined for `exponentialMovingAverage`:
+ - `tripleExponentialDerivative` ignores null values and does not count them in calculations
+
+ Example (`n = 4`):
+ 
+ | _time |_value|result|
+ |:-----:|:----:|:----:|
+ |  0001 |   1  |   -  |
+ |  0002 |   2  |   -  |
+ |  0003 |   3  |   -  |
+ |  0004 |   4  |   -  |
+ |  0005 |   5  |   -  |
+ |  0006 |   6  |   -  |
+ |  0007 |   7  |   -  |
+ |  0008 |   8  |   -  |
+ |  0009 |   9  |   -  |
+ |  0010 |  10  |   _  |
+ |  0011 |  11  | 18.18|
+ |  0012 |  12  | 15.38|
+ |  0013 |  13  | 13.33|
+ |  0014 |  14  | 11.76|
+ |  0015 |  15  | 10.52|
+ |  0016 |  14  | 8.304|
+ |  0017 |  13  | 5.641|
+ |  0018 |  12  | 3.039|
+ |  0019 |  11  | 0.716|
+ |  0020 |  10  | -1.28|
+ |  0021 |   9  | -2.99|
+ |  0022 |   8  | -4.49|
+ |  0023 |   7  | -5.83|
+ |  0024 |   6  | -7.09|
+ |  0025 |   5  | -8.35|
+ |  0026 |   4  | -9.67|
+ |  0027 |   3  | -11.1|
+ |  0028 |   2  | -12.8|
+ |  0029 |   1  | -15.0|
+ 
+  Example of script:
+ ```
+ // A 14 point triple exponential derivative would be called as such:
+ from(bucket: "telegraf/autogen"):
+     |> range(start: -7d)
+     |> tripleExponentialDerivative(n: 14)
+ ```
+
+#### Relative Strength Index
+The relative strength index (RSI) is a momentum indicator that compares the magnitude of recent increases and decreases 
+over a specified time period to measure speed and change of data movements. It acts on the `_value` column.
+
+ Name        | Type     | Description
+| ----        | ----     | -----------
+| n           | int      | N specifies the sample size of the algorithm.       
+
+Rules for calculating the relative strength index for numeric types:
+ - The general process of calculating is `RSI = 100 - (100 / (1 + (AVG GAIN / AVG LOSS)))`
+ - For the first value of the RSI, `AVG GAIN` and `AVG LOSS` are simple `n`-period averages
+ - For subsequent calculations,
+    - `AVG GAIN` = `((PREVIOUS AVG GAIN) * (n - 1)) / n`
+    - `AVG LOSS` = `((PREVIOUS AVG LOSS) * (n - 1)) / n`
+ - `relativeStrengthIndex` ignores null values and skips over them
+ 
+ Example of relative strength index (`N` = 10):
+ 
+  | _time |   A  |   B  | tag |
+  |:-----:|:----:|:----:|:---:|
+  |  0001 |   1  |   1  |  tv |
+  |  0002 |   2  |   2  |  tv |
+  |  0003 |   3  |   3  |  tv |
+  |  0004 |   4  |   4  |  tv |
+  |  0005 |   5  |   5  |  tv |
+  |  0006 |   6  |   6  |  tv |
+  |  0007 |   7  |   7  |  tv |
+  |  0008 |   8  |   8  |  tv |
+  |  0009 |   9  |   9  |  tv |
+  |  0010 |  10  |  10  |  tv |
+  |  0011 |  11  |  11  |  tv |
+  |  0012 |  12  |  12  |  tv |
+  |  0013 |  13  |  13  |  tv |
+  |  0014 |  14  |  14  |  tv |
+  |  0015 |  15  |  15  |  tv |
+  |  0016 |  16  |  16  |  tv |
+  |  0017 |  17  | null |  tv |
+  |  0018 |  18  |  17  |  tv |
+  
+  Result:
+  
+  | _time |   A  |   B  | tag |
+  |:-----:|:----:|:----:|:---:|
+  |  0011 | 100  | 100  |  tv |
+  |  0012 | 100  | 100  |  tv |
+  |  0013 | 100  | 100  |  tv |
+  |  0014 | 100  | 100  |  tv |
+  |  0015 | 100  | 100  |  tv |
+  |  0016 |  90  |  90  |  tv |
+  |  0017 |  81  |  90  |  tv |
+  |  0018 | 72.9 |  81  |  tv |
+ 
+  
+ Example of script:
+```
+// A 14 point relative search index plot would be called as such:
+from(bucket: "telegraf/autogen"):
+    |> range(start: -7d)
+    |> relativeSearchIndex(n: 14)
+```
+
+#### Kaufman's Efficiency Ratio
+
+Kaufman's Efficiency Ratio indicator is created by taking the absolute value of the results of Chande Momentum Oscillator and dividing by 100 to give the 0 to 1 range. Higher values represent a more efficient or trending market.
+
+The default column `KaufmansER` takes in is "_value".
+
+| Name        | Type     | Description
+| ----        | ----     | -----------
+| n           | int      | N specifies the period.
+
+ Example:
+ 
+ | _time |_value|result|
+ |:-----:|:----:|:----:|
+ |  0001 |   1  |   -  |
+ |  0002 |   2  |   -  |
+ |  0003 |   3  |   -  |
+ |  0004 |   4  |   -  |
+ |  0005 |   5  |   -  |
+ |  0006 |   6  |   -  |
+ |  0007 |   7  |   -  |
+ |  0008 |   8  |   -  |
+ |  0009 |   9  |   -  |
+ |  0010 |  10  |   -  |
+ |  0011 |  11  |   1  |
+ |  0012 |  12  |   1  |
+ |  0013 |  13  |   1  |
+ |  0014 |  14  |   1  |
+ |  0015 |  15  |   1  |
+ |  0016 |  14  |  0.8 |
+ |  0017 |  13  |  0.6 |
+ |  0018 |  12  |  0.4 |
+ |  0019 |  11  |  0.2 |
+ |  0020 |  10  |  0   |
+ |  0021 |   9  |  0.2 |
+ |  0022 |   8  |  0.4 |
+ |  0023 |   7  |  0.6 |
+ |  0024 |   6  |  0.8 |
+ |  0025 |   5  |   1  |
+ |  0026 |   4  |   1  |
+ |  0027 |   3  |   1  |
+ |  0028 |   2  |   1  |
+ |  0029 |   1  |   1  |
+ 
+ Example of script:
+ ```
+ from(bucket: "telegraf/autogen"):
+     |> range(start: -7d)
+     |> kaufmansER(n: 10)
+ ```
+
+#### Kaufman's Adaptive Moving Average
+
+Kaufman's Adaptive Moving Average is designed to account for market noise or volatility. This trend-following indicator can be used to identify the overall trend, time turning points and filter data movements.
+
+| Name        | Type     | Description
+| ----        | ----     | -----------
+| n           | int      | N specifies the period.
+| column      | string | Column is the column that `KaufmansAMA` should be performed on and is assumed to be "_value" if left unspecified.
+
+ Example:
+ 
+ | _time |_value|result|
+ |:-----:|:----:|:----:|
+ |  0001 |   1  |   -  |
+ |  0002 |   2  |   -  |
+ |  0003 |   3  |   -  |
+ |  0004 |   4  |   -  |
+ |  0005 |   5  |   -  |
+ |  0006 |   6  |   -  |
+ |  0007 |   7  |   -  |
+ |  0008 |   8  |   -  |
+ |  0009 |   9  |   -  |
+ |  0010 |  10  |   -  |
+ |  0011 |  11  | 10.444444444444445 |
+ |  0012 |  12  | 11.135802469135802 |
+ |  0013 |  13  | 11.964334705075446 |
+ |  0014 |  14  | 12.869074836153025 |
+ |  0015 |  15  | 13.81615268675168  |
+ |  0016 |  14  | 13.871008014588556 |
+ |  0017 |  13  | 13.71308456353558  |
+ |  0018 |  12  | 13.553331356741122 |
+ |  0019 |  11  | 13.46599437575161  |
+ |  0020 |  10  | 13.4515677602438   |
+ |  0021 |   9  | 13.29930139347417  |
+ |  0022 |   8  | 12.805116570729282 |
+ |  0023 |   7  | 11.752584300922965 |
+ |  0024 |   6  | 10.036160535131101 |
+ |  0025 |   5  | 7.797866963961722  |
+ |  0026 |   4  | 6.109926091089845  |
+ |  0027 |   3  | 4.727736717272135  |
+ |  0028 |   2  | 3.515409287373408  |
+ |  0029 |   1  | 2.3974496040963373 |
+ 
+ Example of script:
+ ```
+ from(bucket: "telegraf/autogen"):
+     |> range(start: -7d)
+     |> kaufmansAMA(n: 10, column: "_value")
+ ```
+
+##### Holt Winters
+
+Holt Winters applies the Holt-Winters damped prediction method with Nelder-Mead optimization to the given dataset.
+In a table, the dataset is composed of the values in the `timeColumn` and in the value `column`.
+The Holt-Winters method predicts `n` seasonally adjusted values for the specified `column`.
+If the data presents no seasonality, the user can specify `seasonality = 0`.
+The user can request to include the fitted data (on the given dataset) in the result by setting `withFit = true`.
+The `n` predicted values occur at the `interval` specified by the user.
+If your `interval` is `6m` and `n` is `3`, you will receive three predicted values that are each six minutes apart.
+`seasonality` is the seasonal pattern parameter and delimits the length of a seasonal pattern according to `interval`.
+If your `interval` is `2m` and `s` is `3`, then the seasonal pattern occurs every six minutes, that is, every three data points.
+
+Before processing the data, Holt Winters discards rows that have a null timestamp.
+Null values are treated like missing data points and taken into account when applying Holt Winters.
+
+HoltWinters supposes to work with evenly spaced values in time, so:
+ - `interval` is used to divide the data in time buckets;
+ - if many values are in the same bucket, the first one is selected, the others are skipped;
+ - if no value is present for a bucket, a missing value is added for that bucket.
+
+By default, HoltWinters uses the first value per time bucket.
+The user can use windowing and selectors/aggregates to specify a different behavior.
+The user can also use `aggregateWindow` as a data preparation step.
+
+Parameters:
+
+| Name        | Type     | Description
+| ----        | ----     | -----------
+| n           | int      | N specifies the number of values to predict.
+| seasonality | int      | Seasonality specifies the number of points that are in a season. Defaults to `0`.
+| interval    | duration | Interval is the interval between two data points.
+| withFit     | bool     | WithFit specifies if the fitted data should be returned. Defaults to `false`.
+| timeColumn  | string   | TimeColumn specifies the time column for the dataset. Defaults to `"_time"`.
+| column      | string   | Column specifies the value column for the dataset. Defaults to `"_value"`.
+
+
+
+Examples:
+
+```
+from(bucket: "waterhouse/autogen")
+    |> range(start: -7y)
+    |> filter(fn: (r) => r._field == "water_level")
+    |> aggregateWindow(every: 379m, fn: first).
+    |> holtWinters(n: 10, seasonality: 4, interval: 379m)
+```
+
+For now, `aggregateWindow` lacks of some parameters of `window`.
+For example, if you need `offset`, you must apply this workaround:
+
+```
+from(bucket: "waterhouse/autogen")
+    |> range(start: -7y)
+    |> filter(fn: (r) => r._field == "water_level")
+    |> window(every: 379m, offset: 348m)
+    // The selector.
+    |> first()
+    // We need to timestamp every selected record per time bucket with the beginning
+    // of the window. So, we overwrite "_time" with "_start".
+    |> duplicate(column: "_start", as: "_time")
+    // We need to "un-window", otherwise the Holt-Winters algorithm would run
+    // for each window separately.
+    |> window(every: inf)
+    |> holtWinters(n: 10, seasonality: 4, interval: 379m)
+```
+ 
+#### Chande Momentum Oscillator 
+
+The Chande Momentum Oscillator (CMO) is a technical momentum indicator developed by Tushar Chande. The CMO indicator is created by calculating the difference between the sum of all recent higher data points and the sum of all recent lower data points, then dividing the result by the sum of all data movement over a given time period. The result is multiplied by 100 to give the -100 to +100 range.
+
+| Name        | Type     | Description
+| ----        | ----     | -----------
+| n           | int      | N specifies the period.
+| columns     | []string | Columns is list of all columns that `chandeMomentumOscillator` should be performed on.
+
+ Example:
+ 
+ | _time |   A  |result|
+ |:-----:|:----:|:----:|
+ |  0001 |   1  |   -  |
+ |  0002 |   2  |   -  |
+ |  0003 |   3  |   -  |
+ |  0004 |   4  |   -  |
+ |  0005 |   5  |   -  |
+ |  0006 |   6  |   -  |
+ |  0007 |   7  |   -  |
+ |  0008 |   8  |   -  |
+ |  0009 |   9  |   -  |
+ |  0010 |  10  |   -  |
+ |  0011 |  11  |  100 |
+ |  0012 |  12  |  100 |
+ |  0013 |  13  |  100 |
+ |  0014 |  14  |  100 |
+ |  0015 |  15  |  100 |
+ |  0016 |  14  |  80  |
+ |  0017 |  13  |  60  |
+ |  0018 |  12  |  40  |
+ |  0019 |  11  |  20  |
+ |  0020 |  10  |  0   |
+ |  0021 |   9  | -20  |
+ |  0022 |   8  | -40  |
+ |  0023 |   7  | -60  |
+ |  0024 |   6  | -80  |
+ |  0025 |   5  | -100 |
+ |  0026 |   4  | -100 |
+ |  0027 |   3  | -100 |
+ |  0028 |   2  | -100 |
+ |  0029 |   1  | -100 |
+ 
+ Example of script:
+ ```
+ from(bucket: "telegraf/autogen"):
+     |> range(start: -7d)
+     |> chandeMomentumOscillator(n: 10, columns: ["_value"])
+ ```
+ 
 #### Distinct
 
 Distinct produces the unique values for a given column. Null is considered its own distinct value if it is present.
@@ -3013,6 +3917,8 @@ StateCount has the following parameters:
 | fn     | (r: record) -> bool | Fn is a function that returns true when the record is in the desired state.                  |
 | column | string              | Column is the name of the column to use to output the state count. Defaults to `stateCount`. |
 
+_NOTE_: make sure that `fn`'s parameter names match the ones specified above (see [why](#Transformations)).
+
 Example:
 
 ```
@@ -3051,6 +3957,8 @@ StateDuration has the following parameters:
 | timeColumn | string              | TimeColumn is the name of the column used to extract timestamps. Defaults to `_time`.           |
 | unit       | duration            | Unit is the dimension of the output value. Defaults to `1s`.                                    |
 
+_NOTE_: make sure that `fn`'s parameter names match the ones specified above (see [why](#Transformations)).
+
 Example:
 
 ```
@@ -3083,6 +3991,7 @@ Both are mutually exclusive.
 Similarly `org` and `orgID` are mutually exclusive and only required when writing to a remote host.
 Both `host` and `token` are optional parameters, however if `host` is specified, `token` is required.
 
+_NOTE_: make sure that `fieldFn`'s parameter names match the ones specified above (see [why](#Transformations)).
 
 For example, given the following table:
 
@@ -3185,6 +4094,8 @@ It has the following parameters:
 | ---- | ----                  | -----------                                                                     |
 | fn   | (key: object) -> bool | Fn is a predicate function. The result is the first table for which fn is true. |
 
+_NOTE_: make sure that `fn`'s parameter names match the ones specified above (see [why](#Transformations)).
+
 Example:
 
 ```
@@ -3244,6 +4155,18 @@ r0 = from(bucket:"telegraf/autogen")
 x = r0._field + "--" + r0._measurement
 ```
 
+##### truncateTimeColumn 
+
+Truncates all entries in a given time column to a specified unit.
+
+Example: 
+```
+from(bucket:"telegraph/autogen")
+    |> truncateTimeColumn(unit: 1s)
+```
+
+Currently, `truncateTimeColumn` only works with the default time column `_time`.
+
 #### Type conversion operations
 
 ##### toBool
@@ -3252,7 +4175,7 @@ Convert a value to a bool.
 
 Example: `from(bucket: "telegraf") |> filter(fn:(r) => r._measurement == "mem" and r._field == "used") |> toBool()`
 
-The function `toBool` is defined as `toBool = (tables=<-) => tables |> map(fn:(r) => bool(v:r._value))`.
+The function `toBool` is defined as `toBool = (tables=<-) => tables |> map(fn:(r) => ({r with _value: bool(v:r._value)}))`.
 If you need to convert other columns use the `map` function directly with the `bool` function.
 
 ##### toInt
@@ -3261,7 +4184,7 @@ Convert a value to a int.
 
 Example: `from(bucket: "telegraf") |> filter(fn:(r) => r._measurement == "mem" and r._field == "used") |> toInt()`
 
-The function `toInt` is defined as `toInt = (tables=<-) => tables |> map(fn:(r) => int(v:r._value))`.
+The function `toInt` is defined as `toInt = (tables=<-) => tables |> map(fn:(r) => ({r with _value: int(v:r._value)}))`.
 If you need to convert other columns use the `map` function directly with the `int` function.
 
 ##### toFloat
@@ -3270,7 +4193,7 @@ Convert a value to a float.
 
 Example: `from(bucket: "telegraf") |> filter(fn:(r) => r._measurement == "mem" and r._field == "used") |> toFloat()`
 
-The function `toFloat` is defined as `toFloat = (tables=<-) => tables |> map(fn:(r) => float(v:r._value))`.
+The function `toFloat` is defined as `toFloat = (tables=<-) => tables |> map(fn:(r) => ({r with _value: float(v:r._value)}))`.
 If you need to convert other columns use the `map` function directly with the `float` function.
 
 ##### toDuration
@@ -3279,8 +4202,10 @@ Convert a value to a duration.
 
 Example: `from(bucket: "telegraf") |> filter(fn:(r) => r._measurement == "mem" and r._field == "used") |> toDuration()`
 
-The function `toDuration` is defined as `toDuration = (tables=<-) => tables |> map(fn:(r) => duration(v:r._value))`.
+The function `toDuration` is defined as `toDuration = (tables=<-) => tables |> map(fn:(r) => ({r with _value: duration(v:r._value)}))`.
 If you need to convert other columns use the `map` function directly with the `duration` function.
+
+TODO: implement duration as a column type in tables (https://github.com/influxdata/flux/issues/470)
 
 ##### toString
 
@@ -3288,7 +4213,7 @@ Convert a value to a string.
 
 Example: `from(bucket: "telegraf") |> filter(fn:(r) => r._measurement == "mem" and r._field == "used") |> toString()`
 
-The function `toString` is defined as `toString = (tables=<-) => tables |> map(fn:(r) => string(v:r._value))`.
+The function `toString` is defined as `toString = (tables=<-) => tables |> map(fn:(r) => ({r with _value: string(v:r._value)}))`.
 If you need to convert other columns use the `map` function directly with the `string` function.
 
 ##### toTime
@@ -3297,7 +4222,7 @@ Convert a value to a time.
 
 Example: `from(bucket: "telegraf") |> filter(fn:(r) => r._measurement == "mem" and r._field == "used") |> toTime()`
 
-The function `toTime` is defined as `toTime = (tables=<-) => tables |> map(fn:(r) => time(v:r._value))`.
+The function `toTime` is defined as `toTime = (tables=<-) => tables |> map(fn:(r) => ({r with _value: time(v:r._value)}))`.
 If you need to convert other columns use the `map` function directly with the `time` function.
 
 ##### toUInt
@@ -3306,7 +4231,7 @@ Convert a value to a uint.
 
 Example: `from(bucket: "telegraf") |> filter(fn:(r) => r._measurement == "mem" and r._field == "used") |> toUInt()`
 
-The function `toUInt` is defined as `toUInt = (tables=<-) => tables |> map(fn:(r) => uint(v:r._value))`.
+The function `toUInt` is defined as `toUInt = (tables=<-) => tables |> map(fn:(r) => ({r with _value: uint(v:r._value)}))`.
 If you need to convert other columns use the `map` function directly with the `uint` function.
 
 
@@ -3314,29 +4239,156 @@ If you need to convert other columns use the `map` function directly with the `u
 
 #### String operations
 
-##### trim
+##### compare
 
-Remove leading and trailing characters specified in cutset from a string.
+Compare two strings lexicographically. Returns 0 if v==t, -1 if v < t, and +1 if v > t.
 
-Example: `trim(v: ".abc.", cutset: ".")` returns the string `abc`.
+Example: `compare(v: "a", t: "a")` returns the int `0`
 
-##### trimSpace
+##### containsStr
 
-Remove leading and trailing spaces from a string.
+Reports whether substr is in v.
 
-Example: `trimSpace(v: "  abc  ")` returns the string `abc`.
+Example: `containsStr(v: "abc", substr: "a")` returns the boolean `true`.
 
-##### trimPrefix
+##### containsAny
 
-Remove a prefix from a string. Strings that do not start with the prefix are returned unchanged.
+Reports whether any value from chars is in v.
 
-Example: `trimPrefix(v: "123_abc", prefix: "123")` returns the string `_abc`.
+Example: `containsAny(v: "abc", chars: "and")` returns the boolean `true`.
 
-##### trimSuffix
+##### countStr
 
-Remove a suffix from a string. Strings that do not end with the suffix are returned unchanged.
+Reports the number of non-overlapping instances in which substr appears in v.
 
-Example: `trimSuffix(v: "abc_123", suffix: "123")` returns the string `abc_`.
+Example: `countStr(v: "aaaaa", substr: "a")` returns the int `5`.
+
+##### equalFold
+
+Reports whether v and t, interpreted as UTF-8 strings, are equal under Unicode case-folding.
+
+Example: `equalFold(v: "Go", t: "go")` returns boolean `true`.
+
+##### hasPrefix
+
+Tests whether the string v begins with prefix.
+
+Example: `hasPrefix(v: "go gopher", t: "go")` returns boolean `true`.
+
+##### hasSuffix
+
+Tests whether the string v ends with suffix.
+
+Example: `hasSuffix(v: "go gopher", t: "go")` returns boolean `false`.
+
+##### index
+
+Returns the index of the first instance of substr in v, or -1 if substr is not present in s.
+
+Example: `index(v: "go gopher", substr: "go")` returns int `0`.
+
+##### indexAny
+
+Returns the index of the first instance of any value in substr in v, or -1 if all values in substr are not present in s.
+
+Example: `indexAny(v: "chicken", chars: "aeiouy")` returns int `2`.
+
+##### isDigit
+
+Returns whether or not v is a digit.
+
+Example: `isDigit(v: "A")` returns boolean `false`.
+
+##### isLetter
+
+Returns whether or not v is a letter.
+
+Example: `isLetter(v: "A")` returns boolean `true`.
+
+##### isLower
+
+Returns whether or not v is lowercase.
+
+Example: `isLower(v: "A")` returns boolean `false`.
+
+##### isUpper
+
+Returns whether or not v is uppercase.
+
+Example: `isUpper(v: "A")` returns boolean `true`.
+
+##### joinStr
+
+Concatenates the elements of inputted string array to create a single string with v as the separator.
+
+Example: `joinStr(arr: []string{"a", "b", "c"}, v: ",")` returns string `a,b,c`.
+
+##### lastIndex
+
+Returns the index of the last instance of substr in v, or -1 if substr is not present in v.
+
+Example: `lastIndex(v: "go gopher", substr: "go")` returns int `3`.
+
+##### lastIndexAny
+
+Returns the index of the last instance of any value from chars in v, or -1 if no value from chars is present in v.
+
+Example: `lastIndexAny(v: "go gopher", substr: "go")` returns int `4`.
+
+##### strlen
+
+Returns the length of the given string, defined to be the number of utf code points.
+
+Example: `strlen(v: "apple")` returns the int `5`.
+Example: `strlen(v: "汉字")` returns the int `2`.
+
+##### repeat
+
+Returns a new string consisting of i copies of the string v.
+
+Example: `repeat("v: na", i: 2)` returns string `nana`.
+
+##### replace 
+
+Returns a copy of the string v with the first i non-overlapping instances of t replaced by u.
+
+Example: `replace(v: "oink oink oink", t: "oink", u: "moo", i: 2)` returns string `moo moo oink`.
+
+##### replaceAll
+
+Returns a copy of the string v with the all non-overlapping instances of t replaced by u.
+
+Example: `replaceAll(v: "oink oink oink", t: "oink", u: "moo")` returns string `moo moo moo`.
+
+##### split
+
+Slices v into all substrings separated by t and returns a slice of the substrings between those separators.
+
+Example: `split(v: "a,b,c", t: ",")` returns []string `["a" "b" "c"]`.
+
+##### splitAfter
+
+Slices v into all substrings after each instance of t and returns a slice of the substrings between those separators.
+
+Example: `splitAfter(v: "a,b,c", t: ",")` returns []string `["a," "b," "c"]`.
+
+##### splitAfterN
+
+Slices v into all substrings after each instance of t and returns a slice of the substrings between those separators. i determines the number of substrings to return.
+
+Example: `splitAfterN(v: "a,b,c", t: ",", i: 2)` returns []string `["a," "b,c"]`.
+
+##### splitN
+
+Slices v into all substrings separated by t and returns a slice of the substrings between those separators. i determines the number of substrings to return.
+
+Example: `splitN(v: "a,b,c", t: ",", i: 2)` returns []string `["a" "b,c"]`.
+
+##### substring 
+
+Returns substring as specified by the given indices start and end, based on utf code points.
+
+Example: `substring(v: "influx", start: 0, end: 3)` returns string `inf`.
 
 ##### title
 
@@ -3344,17 +4396,109 @@ Convert a string to title case.
 
 Example: `title(v: "a flux of foxes")` returns the string `A Flux Of Foxes`.
 
+##### toLower
+
+Convert a string to lower case.
+
+Example: `toLower(v: "KOALA")` returns the string `koala`.
+
+##### toTitle
+
+Returns a copy of the string v with all Unicode letters mapped to their title case.
+
+Example: `toTitle("loud noises")` returns the string `LOUD NOISES`.
+
 ##### toUpper
 
 Convert a string to upper case.
 
 Example: `toUpper(v: "koala")` returns the string `KOALA`.
 
-##### toLower
+##### trim
 
-Convert a string to lower case.
+Remove leading and trailing characters specified in cutset from a string.
 
-Example: `toLower(v: "KOALA")` returns the string `koala`.
+Example: `trim(v: ".abc.", cutset: ".")` returns the string `abc`.
+
+##### trimLeft
+
+Remove leading characters specified in cutset from a string.
+
+Example: `trim(v: ".abc.", cutset: ".")` returns the string `abc.`.
+
+##### trimPrefix
+
+Remove a prefix from a string. Strings that do not start with the prefix are returned unchanged.
+
+Example: `trimPrefix(v: "123_abc", prefix: "123")` returns the string `_abc`.
+
+##### trimRight
+
+Remove trailing characters specified in cutset from a string.
+
+Example: `trim(v: ".abc.", cutset: ".")` returns the string `.abc`.
+
+##### trimSpace
+
+Remove leading and trailing spaces from a string.
+
+Example: `trimSpace(v: "  abc  ")` returns the string `abc`.
+
+##### trimSuffix
+
+Remove a suffix from a string. Strings that do not end with the suffix are returned unchanged.
+
+Example: `trimSuffix(v: "abc_123", suffix: "123")` returns the string `abc_`.
+
+#### Regexp Operations
+
+##### compile
+
+Parse a regular expression and return, if successful, a Regexp object that can be used to match against text.
+
+Example: `compile(v: "abcd")` returns the Regex object `abcd`.
+
+##### findString
+
+Return a string holding the text of the leftmost match in v of the regular expression.
+
+Example: `findString(r: regexp.compile("foo.?"), v: "seafood fool")` returns the string `food`.
+
+##### findStringIndex
+
+Returns a two-element slice of integers defining the location of the leftmost match in v of the regular expression.
+ 
+Example: `findStringIndex(r: regexp.compile("ab?"), v: "tablett")` returns the int array `[1 3]`.
+
+##### getString
+
+Return the source text used to compile the regular expression.
+
+Example: `getString(v: regexp.compile("abcd"))` returns the Regex object `abcd`.
+
+##### matchRegexString
+
+Report whether the string v contains any match of the regular expression r.
+
+Example: `matchString(r: regexp.compile("(gopher){2}"), v: "gophergophergopher")` returns boolean `true`
+
+##### replaceAllString
+
+Returns a copy of v, replacing matches of the Regexp r with the replacement string t.
+
+Example: `replaceAllString(r: regexp.compile("a(x*)b"), v: "-ab-axxb-", t: "T")` returns string `-T-T-`.
+
+##### quoteMeta
+
+Return a string that escapes all regular expression metacharacters inside the argument text; the returned string is a regular expression matching the literal text.
+
+Example: `quoteMeta("Escaping symbols like: .+*?()|[]{}^$")` returns string `Escaping symbols like: \.\+\*\?\(\)\|\[\]\{\}\^\$`. 
+
+##### splitRegexp
+
+Slices v into substrings separated by the expression and returns a slice of the substrings between those expression matches.
+
+Example: `splitRegex(r: regexp.compile("a*"), v: "abaabaccadaaae", i: 5)` returns string array `["", "b", "b", "c", "cadaaae"]`.
 
 ### Composite data types
 

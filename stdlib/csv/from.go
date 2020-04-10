@@ -1,19 +1,18 @@
 package csv
 
 import (
-	"fmt"
-	"io/ioutil"
-	"os"
-
 	"context"
 	"strings"
 
 	"github.com/influxdata/flux"
+	"github.com/influxdata/flux/codes"
 	"github.com/influxdata/flux/csv"
+	"github.com/influxdata/flux/dependencies/filesystem"
 	"github.com/influxdata/flux/execute"
+	"github.com/influxdata/flux/internal/errors"
+	"github.com/influxdata/flux/memory"
 	"github.com/influxdata/flux/plan"
 	"github.com/influxdata/flux/semantic"
-	"github.com/pkg/errors"
 )
 
 const FromCSVKind = "fromCSV"
@@ -54,17 +53,11 @@ func createFromCSVOpSpec(args flux.Arguments, a *flux.Administration) (flux.Oper
 	}
 
 	if spec.CSV == "" && spec.File == "" {
-		return nil, errors.New("must provide csv raw text or filename")
+		return nil, errors.New(codes.Invalid, "must provide csv raw text or filename")
 	}
 
 	if spec.CSV != "" && spec.File != "" {
-		return nil, errors.New("must provide exactly one of the parameters csv or file")
-	}
-
-	if spec.File != "" {
-		if _, err := os.Stat(spec.File); err != nil {
-			return nil, errors.Wrap(err, "failed to stat csv file: ")
-		}
+		return nil, errors.New(codes.Invalid, "must provide exactly one of the parameters csv or file")
 	}
 
 	return spec, nil
@@ -87,7 +80,7 @@ type FromCSVProcedureSpec struct {
 func newFromCSVProcedure(qs flux.OperationSpec, pa plan.Administration) (plan.ProcedureSpec, error) {
 	spec, ok := qs.(*FromCSVOpSpec)
 	if !ok {
-		return nil, fmt.Errorf("invalid spec type %T", qs)
+		return nil, errors.Newf(codes.Internal, "invalid spec type %T", qs)
 	}
 
 	return &FromCSVProcedureSpec{
@@ -110,27 +103,37 @@ func (s *FromCSVProcedureSpec) Copy() plan.ProcedureSpec {
 func createFromCSVSource(prSpec plan.ProcedureSpec, dsid execute.DatasetID, a execute.Administration) (execute.Source, error) {
 	spec, ok := prSpec.(*FromCSVProcedureSpec)
 	if !ok {
-		return nil, fmt.Errorf("invalid spec type %T", prSpec)
+		return nil, errors.Newf(codes.Internal, "invalid spec type %T", prSpec)
 	}
+	return CreateSource(spec, dsid, a)
+}
 
+func CreateSource(spec *FromCSVProcedureSpec, dsid execute.DatasetID, a execute.Administration) (execute.Source, error) {
 	csvText := spec.CSV
 	// if spec.File non-empty then spec.CSV is empty
 	if spec.File != "" {
-		csvBytes, err := ioutil.ReadFile(spec.File)
+		deps := flux.GetDependencies(a.Context())
+		fs, err := deps.FilesystemService()
 		if err != nil {
-			return nil, errors.Wrap(err, "csv.from() failed to read file")
+			return nil, err
+		}
+
+		csvBytes, err := filesystem.ReadFile(fs, spec.File)
+		if err != nil {
+			return nil, errors.Wrap(err, codes.Inherit, "csv.from() failed to read file")
 		}
 		csvText = string(csvBytes)
 	}
-	csvSource := CSVSource{id: dsid, tx: csvText}
+	csvSource := CSVSource{id: dsid, tx: csvText, alloc: a.Allocator()}
 
 	return &csvSource, nil
 }
 
 type CSVSource struct {
-	id execute.DatasetID
-	tx string
-	ts []execute.Transformation
+	id    execute.DatasetID
+	tx    string
+	ts    []execute.Transformation
+	alloc *memory.Allocator
 }
 
 func (c *CSVSource) AddTransformation(t execute.Transformation) {
@@ -147,7 +150,7 @@ func (c *CSVSource) Run(ctx context.Context) {
 		// transformation. Unlike other sources, tables from csv sources
 		// are not read-only. They contain mutable state and therefore
 		// cannot be shared among goroutines.
-		decoder := csv.NewResultDecoder(csv.ResultDecoderConfig{})
+		decoder := csv.NewResultDecoder(csv.ResultDecoderConfig{Allocator: c.alloc})
 		result, decodeErr := decoder.Decode(strings.NewReader(c.tx))
 		if decodeErr != nil {
 			err = decodeErr
@@ -180,8 +183,11 @@ func (c *CSVSource) Run(ctx context.Context) {
 	}
 
 FINISH:
+	if err != nil {
+		err = errors.Wrap(err, codes.Inherit, "error in csv.from()")
+	}
+
 	for _, t := range c.ts {
-		err = errors.Wrap(err, "error in csv.from()")
 		t.Finish(c.id, err)
 	}
 }

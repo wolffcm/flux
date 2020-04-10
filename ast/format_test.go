@@ -6,7 +6,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/influxdata/flux/ast"
 	"github.com/influxdata/flux/parser"
-	"github.com/pkg/errors"
 )
 
 var skip = map[string]string{
@@ -36,7 +35,7 @@ func formatTestHelper(t *testing.T, testCases []formatTestCase) {
 			pkg := parser.ParseSource(tc.script)
 			if ast.Check(pkg) > 0 {
 				err := ast.GetError(pkg)
-				t.Fatal(errors.Wrapf(err, "source has bad syntax:\n%s", tc.script))
+				t.Fatalf("source has bad syntax: %s\n%s", err, tc.script)
 			}
 
 			stringResult := ast.Format(pkg.Files[0])
@@ -53,8 +52,16 @@ func formatTestHelper(t *testing.T, testCases []formatTestCase) {
 func TestFormat_Nodes(t *testing.T) {
 	testCases := []formatTestCase{
 		{
+			name:   "string interpolation",
+			script: `"a + b = ${a + b}"`,
+		},
+		{
 			name:   "binary_op",
 			script: `1 + 1 - 2`,
+		},
+		{
+			name:   "binary_op 2",
+			script: `2 ^ 4`,
 		},
 		{
 			name: "arrow_fn",
@@ -73,6 +80,10 @@ func TestFormat_Nodes(t *testing.T) {
 		{
 			name:   "object",
 			script: `{a: 1, b: {c: 11, d: 12}}`,
+		},
+		{
+			name:   "object with",
+			script: `{foo with a: 1, b: {c: 11, d: 12}}`,
 		},
 		{
 			name:   "implicit key object literal",
@@ -410,7 +421,7 @@ func TestFormat_Associativity(t *testing.T) {
 		},
 		{
 			name:   "unary with pars",
-			script: `not (b and c)`,
+			script: `not (b and c) and exists d or exists (e and f)`,
 		},
 		{
 			name:   "unary negative duration",

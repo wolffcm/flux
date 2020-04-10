@@ -7,13 +7,14 @@ import (
 	"sync"
 
 	"github.com/influxdata/flux"
+	"github.com/influxdata/flux/codes"
 	"github.com/influxdata/flux/execute"
+	"github.com/influxdata/flux/internal/errors"
 	"github.com/influxdata/flux/interpreter"
 	"github.com/influxdata/flux/memory"
 	"github.com/influxdata/flux/plan"
 	"github.com/influxdata/flux/semantic"
 	"github.com/influxdata/flux/values"
-	"github.com/pkg/errors"
 )
 
 const JoinKind = "join"
@@ -87,7 +88,7 @@ func createJoinOpSpec(args flux.Arguments, a *flux.Administration) (flux.Operati
 	if array, err := args.GetRequiredArray("on", semantic.String); err != nil {
 		return nil, err
 	} else if array.Len() == 0 {
-		return nil, errors.New("at least one column in 'on' column list is required")
+		return nil, errors.New(codes.Invalid, "at least one column in 'on' column list is required")
 	} else {
 		spec.On, err = interpreter.ToStringArray(array)
 		if err != nil {
@@ -100,7 +101,7 @@ func createJoinOpSpec(args flux.Arguments, a *flux.Administration) (flux.Operati
 	if joinType, ok, err := args.GetString("method"); err != nil {
 		return nil, err
 	} else if ok && !methods[joinType] {
-		return nil, fmt.Errorf("%s is not a valid join type", joinType)
+		return nil, errors.Newf(codes.Invalid, "%s is not a valid join type", joinType)
 	} else if ok && methods[joinType] {
 		spec.Method = joinType
 	} else {
@@ -109,7 +110,7 @@ func createJoinOpSpec(args flux.Arguments, a *flux.Administration) (flux.Operati
 
 	// It is not valid to specify a list of 'on' columns for a cross product
 	if spec.Method == "cross" && spec.On != nil {
-		return nil, errors.New("cross product and 'on' are mutually exclusive")
+		return nil, errors.New(codes.Invalid, "cross product and 'on' are mutually exclusive")
 	}
 
 	tables, err := args.GetRequiredObject("tables")
@@ -124,13 +125,13 @@ func createJoinOpSpec(args flux.Arguments, a *flux.Administration) (flux.Operati
 			return
 		}
 		if operation.PolyType().Nature() != semantic.Object {
-			err = fmt.Errorf("expected %q to be object type; instead got %v",
+			err = errors.Newf(codes.Invalid, "expected %q to be object type; instead got %v",
 				name, operation.PolyType().Nature())
 			return
 		}
 		table, ok := operation.(*flux.TableObject)
 		if !ok {
-			err = fmt.Errorf("expected %q to be TableObject type, instead got %v", name, operation.Type())
+			err = errors.Newf(codes.Invalid, "expected %q to be TableObject type, instead got %v", name, operation.Type())
 			return
 		}
 		spec.params.names = append(spec.params.names, name)
@@ -176,7 +177,7 @@ func newMergeJoinProcedure(qs flux.OperationSpec, pa plan.Administration) (plan.
 	var ok bool
 
 	if spec, ok = qs.(*JoinOpSpec); !ok {
-		return nil, fmt.Errorf("invalid spec type %T", qs)
+		return nil, errors.Newf(codes.Internal, "invalid spec type %T", qs)
 	}
 
 	tableNames := make([]string, len(spec.TableNames))
@@ -213,12 +214,12 @@ func (s *MergeJoinProcedureSpec) Copy() plan.ProcedureSpec {
 func createMergeJoinTransformation(id execute.DatasetID, mode execute.AccumulationMode, spec plan.ProcedureSpec, a execute.Administration) (execute.Transformation, execute.Dataset, error) {
 	s, ok := spec.(*MergeJoinProcedureSpec)
 	if !ok {
-		return nil, nil, fmt.Errorf("invalid spec type %T", spec)
+		return nil, nil, errors.Newf(codes.Internal, "invalid spec type %T", spec)
 	}
 	parents := a.Parents()
 	if len(parents) != 2 {
 		//TODO(nathanielc): Support n-way joins
-		return nil, nil, errors.New("joins currently must only have two parents")
+		return nil, nil, errors.New(codes.Unimplemented, "joins currently must only have two parents")
 	}
 
 	tableNames := make(map[execute.DatasetID]string, len(s.TableNames))
@@ -280,6 +281,21 @@ func (t *mergeJoinTransformation) RetractTable(id execute.DatasetID, key flux.Gr
 func (t *mergeJoinTransformation) Process(id execute.DatasetID, tbl flux.Table) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+
+	// If a table is missing any of the "on" columns, then it won't be part of the output:
+	//   - A missing column is treated as a null value
+	//   - Null values are not considered as equal to each other in joins
+	numOnCols := 0
+	for _, c := range tbl.Cols() {
+		if t.cache.on[c.Label] {
+			numOnCols++
+		}
+	}
+	if numOnCols < len(t.cache.on) {
+		// Discard this table
+		tbl.Done()
+		return nil
+	}
 
 	if err := t.cache.insertIntoBuffer(id, tbl); err != nil {
 		return err
@@ -545,24 +561,24 @@ func (c *MergeJoinCache) Table(key flux.GroupKey) (flux.Table, error) {
 	preJoinGroupKeys, ok := c.reverseLookup[key]
 
 	if !ok {
-		return nil, fmt.Errorf("no table exists with group key: %v", key)
+		return nil, errors.Newf(codes.FailedPrecondition, "no table exists with group key: %v", key)
 	}
 
 	if _, ok := c.tables[key]; !ok {
 
 		left := c.buffers[c.leftID].table(preJoinGroupKeys.left)
 		if left == nil {
-			return nil, fmt.Errorf("no table in left join buffer with key: %v", key)
+			return nil, errors.Newf(codes.FailedPrecondition, "no table in left join buffer with key: %v", key)
 		}
 
 		right := c.buffers[c.rightID].table(preJoinGroupKeys.right)
-		if left == nil {
-			return nil, fmt.Errorf("no table in right join buffer with key: %v", key)
+		if right == nil {
+			return nil, errors.Newf(codes.FailedPrecondition, "no table in right join buffer with key: %v", key)
 		}
 
 		table, err := c.join(left, right)
 		if err != nil {
-			return nil, fmt.Errorf("table with group key (%v) could not be fetched", key)
+			return nil, errors.Newf(codes.NotFound, "table with group key (%v) could not be fetched", key)
 		}
 
 		c.tables[key] = table
@@ -957,13 +973,12 @@ func (c *MergeJoinCache) postJoinGroupKey(keys map[execute.DatasetID]flux.GroupK
 
 // advance advances the row pointer of a sorted table that is being joined
 func (c *MergeJoinCache) advance(offset int, table *execute.ColListTableBuilder) (subset, flux.GroupKey) {
-	// TODO(jlapacik): this is a temporary hack
-	// remove when ColListTableBuilder implements ColReader
 	tbl, _ := table.Table()
 	cr := tbl.(flux.ColReader)
 	if n := cr.Len(); n == offset {
 		return subset{Start: n, Stop: n}, nil
 	}
+
 	start := offset
 	key := execute.GroupKeyForRowOn(start, cr, c.on)
 	sequence := subset{Start: start}

@@ -1,6 +1,7 @@
 package generate
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -20,7 +21,7 @@ type FromGeneratorOpSpec struct {
 	Start time.Time                    `json:"start"`
 	Stop  time.Time                    `json:"stop"`
 	Count int64                        `json:"count"`
-	Fn    *semantic.FunctionExpression `json:"fn"`
+	Fn    interpreter.ResolvedFunction `json:"fn"`
 }
 
 func init() {
@@ -93,7 +94,7 @@ type FromGeneratorProcedureSpec struct {
 	Start time.Time
 	Stop  time.Time
 	Count int64
-	Fn    compiler.Func
+	Fn    interpreter.ResolvedFunction
 }
 
 func newFromGeneratorProcedure(qs flux.OperationSpec, pa plan.Administration) (plan.ProcedureSpec, error) {
@@ -103,15 +104,11 @@ func newFromGeneratorProcedure(qs flux.OperationSpec, pa plan.Administration) (p
 		return nil, fmt.Errorf("invalid spec type %T", qs)
 	}
 
-	fn, _, err := compiler.CompileFnParam(spec.Fn, semantic.Int, semantic.Int)
-	if err != nil {
-		return nil, err
-	}
 	return &FromGeneratorProcedureSpec{
 		Count: spec.Count,
 		Start: spec.Start,
 		Stop:  spec.Stop,
-		Fn:    fn,
+		Fn:    spec.Fn,
 	}, nil
 }
 
@@ -135,7 +132,11 @@ func createFromGeneratorSource(prSpec plan.ProcedureSpec, dsid execute.DatasetID
 	s.Start = spec.Start
 	s.Stop = spec.Stop
 	s.Count = spec.Count
-	s.Fn = spec.Fn
+	fn, _, err := compiler.CompileFnParam(spec.Fn.Fn, compiler.ToScope(spec.Fn.Scope), semantic.Int, semantic.Int)
+	if err != nil {
+		return nil, err
+	}
+	s.Fn = fn
 
 	return execute.CreateSourceFromDecoder(s, dsid, a)
 }
@@ -153,15 +154,15 @@ func NewGeneratorSource(a *memory.Allocator) *GeneratorSource {
 	return &GeneratorSource{alloc: a}
 }
 
-func (s *GeneratorSource) Connect() error {
+func (s *GeneratorSource) Connect(ctx context.Context) error {
 	return nil
 }
 
-func (s *GeneratorSource) Fetch() (bool, error) {
+func (s *GeneratorSource) Fetch(ctx context.Context) (bool, error) {
 	return !s.done, nil
 }
 
-func (s *GeneratorSource) Decode() (flux.Table, error) {
+func (s *GeneratorSource) Decode(ctx context.Context) (flux.Table, error) {
 	defer func() {
 		s.done = true
 	}()
@@ -209,11 +210,11 @@ func (s *GeneratorSource) Decode() (flux.Table, error) {
 		b.AppendTime(timeIdx, values.ConvertTime(s.Start.Add(time.Duration(i)*deltaT)))
 		in := values.NewObject()
 		in.Set("n", values.NewInt(int64(i)))
-		v, err := s.Fn.EvalInt(in)
+		v, err := s.Fn.Eval(ctx, in)
 		if err != nil {
 			return nil, err
 		}
-		if err := b.AppendInt(valueIdx, v); err != nil {
+		if err := b.AppendValue(valueIdx, v); err != nil {
 			return nil, err
 		}
 	}

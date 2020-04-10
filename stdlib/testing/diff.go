@@ -2,24 +2,27 @@ package testing
 
 import (
 	"bytes"
-	"errors"
-	"fmt"
+	"math"
 	"sort"
 	"sync"
 
 	"github.com/apache/arrow/go/arrow/array"
 	"github.com/influxdata/flux"
 	"github.com/influxdata/flux/arrow"
+	"github.com/influxdata/flux/codes"
 	"github.com/influxdata/flux/execute"
+	"github.com/influxdata/flux/internal/errors"
 	"github.com/influxdata/flux/memory"
 	"github.com/influxdata/flux/plan"
 	"github.com/influxdata/flux/semantic"
 )
 
 const DiffKind = "diff"
+const DefaultEpsilon = 1e-9
 
 type DiffOpSpec struct {
-	Verbose bool `json:"verbose,omitempty"`
+	Verbose bool    `json:"verbose,omitempty"`
+	Epsilon float64 `json:"minValue"`
 }
 
 func (s *DiffOpSpec) Kind() flux.OperationKind {
@@ -32,6 +35,7 @@ func init() {
 			"verbose": semantic.Bool,
 			"got":     flux.TableObjectType,
 			"want":    flux.TableObjectType,
+			"epsilon": semantic.Float,
 		},
 		Required:     semantic.LabelSet{"got", "want"},
 		Return:       flux.TableObjectType,
@@ -51,7 +55,7 @@ func createDiffOpSpec(args flux.Arguments, a *flux.Administration) (flux.Operati
 	}
 	p, ok := t.(*flux.TableObject)
 	if !ok {
-		return nil, errors.New("want input to diff is not a table object")
+		return nil, errors.New(codes.Invalid, "want input to diff is not a table object")
 	}
 	a.AddParent(p)
 
@@ -61,7 +65,7 @@ func createDiffOpSpec(args flux.Arguments, a *flux.Administration) (flux.Operati
 	}
 	p, ok = t.(*flux.TableObject)
 	if !ok {
-		return nil, errors.New("got input to diff is not a table object")
+		return nil, errors.New(codes.Invalid, "got input to diff is not a table object")
 	}
 	a.AddParent(p)
 
@@ -72,7 +76,14 @@ func createDiffOpSpec(args flux.Arguments, a *flux.Administration) (flux.Operati
 		verbose = false
 	}
 
-	return &DiffOpSpec{Verbose: verbose}, nil
+	epsilon, ok, err := args.GetFloat("epsilon")
+	if err != nil {
+		return nil, err
+	} else if !ok {
+		epsilon = DefaultEpsilon
+	}
+
+	return &DiffOpSpec{Verbose: verbose, Epsilon: epsilon}, nil
 }
 
 func newDiffOp() flux.OperationSpec {
@@ -82,6 +93,7 @@ func newDiffOp() flux.OperationSpec {
 type DiffProcedureSpec struct {
 	plan.DefaultCost
 	Verbose bool
+	Epsilon float64
 }
 
 func (s *DiffProcedureSpec) Kind() plan.ProcedureKind {
@@ -96,9 +108,9 @@ func (s *DiffProcedureSpec) Copy() plan.ProcedureSpec {
 func newDiffProcedure(qs flux.OperationSpec, pa plan.Administration) (plan.ProcedureSpec, error) {
 	spec, ok := qs.(*DiffOpSpec)
 	if !ok {
-		return nil, fmt.Errorf("invalid spec type %T", qs)
+		return nil, errors.Newf(codes.Internal, "invalid spec type %T", qs)
 	}
-	return &DiffProcedureSpec{Verbose: spec.Verbose}, nil
+	return &DiffProcedureSpec{Verbose: spec.Verbose, Epsilon: spec.Epsilon}, nil
 }
 
 type DiffTransformation struct {
@@ -109,8 +121,11 @@ type DiffTransformation struct {
 
 	d     execute.Dataset
 	cache execute.TableBuilderCache
+	alloc *memory.Allocator
 
-	inputCache *execute.GroupLookup
+	inputCache *execute.RandomAccessGroupLookup
+
+	epsilon float64
 }
 
 type tableBuffer struct {
@@ -130,7 +145,7 @@ type tableColumn struct {
 	Values array.Interface
 }
 
-func copyTable(id execute.DatasetID, tbl flux.Table) (*tableBuffer, error) {
+func copyTable(id execute.DatasetID, tbl flux.Table, alloc *memory.Allocator) (*tableBuffer, error) {
 	// Find the value columns for the table and save them.
 	// We do not care about the group key.
 	type tableBuilderColumn struct {
@@ -146,19 +161,19 @@ func copyTable(id execute.DatasetID, tbl flux.Table) (*tableBuffer, error) {
 		bc := tableBuilderColumn{Type: col.Type}
 		switch col.Type {
 		case flux.TFloat:
-			bc.Builder = arrow.NewFloatBuilder(nil)
+			bc.Builder = arrow.NewFloatBuilder(alloc)
 		case flux.TInt:
-			bc.Builder = arrow.NewIntBuilder(nil)
+			bc.Builder = arrow.NewIntBuilder(alloc)
 		case flux.TUInt:
-			bc.Builder = arrow.NewUintBuilder(nil)
+			bc.Builder = arrow.NewUintBuilder(alloc)
 		case flux.TString:
-			bc.Builder = arrow.NewStringBuilder(nil)
+			bc.Builder = arrow.NewStringBuilder(alloc)
 		case flux.TBool:
-			bc.Builder = arrow.NewBoolBuilder(nil)
+			bc.Builder = arrow.NewBoolBuilder(alloc)
 		case flux.TTime:
-			bc.Builder = arrow.NewIntBuilder(nil)
+			bc.Builder = arrow.NewIntBuilder(alloc)
 		default:
-			return nil, errors.New("implement me")
+			return nil, errors.New(codes.Unimplemented)
 		}
 		builders[col.Label] = bc
 	}
@@ -245,7 +260,7 @@ func copyTable(id execute.DatasetID, tbl flux.Table) (*tableBuffer, error) {
 					}
 				}
 			default:
-				return errors.New("implement me")
+				return errors.New(codes.Unimplemented)
 			}
 		}
 		return nil
@@ -271,14 +286,14 @@ func copyTable(id execute.DatasetID, tbl flux.Table) (*tableBuffer, error) {
 
 func createDiffTransformation(id execute.DatasetID, mode execute.AccumulationMode, spec plan.ProcedureSpec, a execute.Administration) (execute.Transformation, execute.Dataset, error) {
 	if len(a.Parents()) != 2 {
-		return nil, nil, errors.New("diff should have exactly 2 parents")
+		return nil, nil, errors.New(codes.Internal, "diff should have exactly 2 parents")
 	}
 
 	cache := execute.NewTableBuilderCache(a.Allocator())
 	dataset := execute.NewDataset(id, mode, cache)
 	pspec, ok := spec.(*DiffProcedureSpec)
 	if !ok {
-		return nil, nil, fmt.Errorf("invalid spec type %T", pspec)
+		return nil, nil, errors.Newf(codes.Internal, "invalid spec type %T", pspec)
 	}
 
 	transform := NewDiffTransformation(dataset, cache, pspec, a.Parents()[0], a.Parents()[1], a.Allocator())
@@ -292,8 +307,10 @@ func NewDiffTransformation(d execute.Dataset, cache execute.TableBuilderCache, s
 		gotID:      gotID,
 		d:          d,
 		cache:      cache,
-		inputCache: execute.NewGroupLookup(),
+		inputCache: execute.NewRandomAccessGroupLookup(),
 		finished:   make(map[execute.DatasetID]bool, 2),
+		alloc:      a,
+		epsilon:    spec.Epsilon,
 	}
 }
 
@@ -309,12 +326,13 @@ func (t *DiffTransformation) Process(id execute.DatasetID, tbl flux.Table) error
 	// to prematurely declare the other table as finished so we
 	// don't do more work on something that failed anyway.
 	if t.finished[id] {
+		tbl.Done()
 		return nil
 	}
 
 	// Copy the table we are processing into a buffer.
 	// This may or may not be the want table. We fix that later.
-	want, err := copyTable(id, tbl)
+	want, err := copyTable(id, tbl, t.alloc)
 	if err != nil {
 		return err
 	}
@@ -372,7 +390,7 @@ func (t *DiffTransformation) createSchema(builder execute.TableBuilder, want, go
 	}
 	for label, col := range got.columns {
 		if typ, ok := colTypes[label]; ok && typ != col.Type {
-			return 0, nil, fmt.Errorf("column types differ: want=%s got=%s", typ, col.Type)
+			return 0, nil, errors.Newf(codes.FailedPrecondition, "column types differ: want=%s got=%s", typ, col.Type)
 		} else if !ok {
 			colTypes[label] = col.Type
 		}
@@ -400,6 +418,9 @@ func (t *DiffTransformation) createSchema(builder execute.TableBuilder, want, go
 }
 
 func (t *DiffTransformation) diff(key flux.GroupKey, want, got *tableBuffer) error {
+	defer want.Release()
+	defer got.Release()
+
 	// Find the smallest size for the tables. We will only iterate
 	// over these rows.
 	sz := want.sz
@@ -430,7 +451,7 @@ func (t *DiffTransformation) diff(key flux.GroupKey, want, got *tableBuffer) err
 	// First, construct an output table.
 	builder, created := t.cache.TableBuilder(key)
 	if !created {
-		return errors.New("duplicate table key")
+		return errors.New(codes.FailedPrecondition, "duplicate table key")
 	}
 
 	diffIdx, columnIdxs, err := t.createSchema(builder, want, got)
@@ -482,10 +503,9 @@ func (t *DiffTransformation) rowEqual(want, got *tableBuffer, i int) bool {
 
 		switch wantCol.Type {
 		case flux.TFloat:
-			want, got := wantCol.Values.(*array.Float64), gotCol.Values.(*array.Float64)
-			if want.Value(i) != got.Value(i) {
-				return false
-			}
+			want, got := wantCol.Values.(*array.Float64).Value(i), gotCol.Values.(*array.Float64).Value(i)
+			// want == got is for handling +Inf and -Inf.
+			return want == got || math.Abs(want-got) <= t.epsilon
 		case flux.TInt:
 			want, got := wantCol.Values.(*array.Int64), gotCol.Values.(*array.Int64)
 			if want.Value(i) != got.Value(i) {

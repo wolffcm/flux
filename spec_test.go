@@ -1,6 +1,7 @@
 package flux_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,16 +10,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/influxdata/flux/stdlib/influxdata/influxdb"
-	"github.com/influxdata/flux/stdlib/universe"
-
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/influxdata/flux"
+	"github.com/influxdata/flux/dependencies/dependenciestest"
 	"github.com/influxdata/flux/interpreter"
 	"github.com/influxdata/flux/parser"
 	"github.com/influxdata/flux/semantic"
 	_ "github.com/influxdata/flux/stdlib" // Import stdlib
+	"github.com/influxdata/flux/stdlib/influxdata/influxdb"
+	"github.com/influxdata/flux/stdlib/universe"
 	"github.com/influxdata/flux/values"
 )
 
@@ -292,7 +293,7 @@ func Example_option() {
 	// The now option is a function value whose default behavior is to return
 	// the current system time when called. The function now() doesn't take
 	// any arguments so can be called with nil.
-	nowTime, _ := nowFunc.Function().Call(nil)
+	nowTime, _ := nowFunc.Function().Call(dependenciestest.Default().Inject(context.TODO()), nil)
 	fmt.Fprintf(os.Stderr, "The current system time (UTC) is: %v\n", nowTime)
 	// Output:
 }
@@ -319,14 +320,16 @@ func Example_overrideDefaultOptionExternally() {
 		option now = () => 2018-07-13T00:00:00Z
 		what_time_is_it = now()`
 
-	itrp := interpreter.NewInterpreter()
+	ctx := dependenciestest.Default().Inject(context.Background())
+	itrp := interpreter.NewInterpreter(interpreter.NewPackage(""))
+
 	universe := flux.Prelude()
 
 	astPkg := parser.ParseSource(queryString)
 	semPkg, _ := semantic.New(astPkg)
 
 	// Evaluate package
-	_, err := itrp.Eval(semPkg, universe, nil)
+	_, err := itrp.Eval(ctx, semPkg, universe, nil)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -344,7 +347,8 @@ func Example_overrideDefaultOptionExternally() {
 func Example_overrideDefaultOptionInternally() {
 	queryString := `what_time_is_it = now()`
 
-	itrp := interpreter.NewInterpreter()
+	ctx := dependenciestest.Default().Inject(context.Background())
+	itrp := interpreter.NewInterpreter(interpreter.NewPackage(""))
 	universe := flux.Prelude()
 
 	astPkg := parser.ParseSource(queryString)
@@ -356,7 +360,7 @@ func Example_overrideDefaultOptionInternally() {
 	functionType := semantic.NewFunctionPolyType(semantic.FunctionPolySignature{
 		Return: semantic.Time,
 	})
-	functionCall := func(args values.Object) (values.Value, error) {
+	functionCall := func(ctx context.Context, args values.Object) (values.Value, error) {
 		return values.NewTime(values.ConvertTime(timeValue)), nil
 	}
 	sideEffect := false
@@ -367,7 +371,7 @@ func Example_overrideDefaultOptionInternally() {
 	universe.Set("now", newNowFunc)
 
 	// Evaluate package
-	_, err := itrp.Eval(semPkg, universe, nil)
+	_, err := itrp.Eval(ctx, semPkg, universe, nil)
 	if err != nil {
 		fmt.Println(err)
 	}

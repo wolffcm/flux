@@ -21,11 +21,11 @@ var pkgAST = &ast.Package{
 			Errors: nil,
 			Loc: &ast.SourceLocation{
 				End: ast.Position{
-					Column: 2,
-					Line:   21,
+					Column: 18,
+					Line:   38,
 				},
 				File:   "strings.flux",
-				Source: "package strings\n\n// Transformation functions\nbuiltin title\nbuiltin toUpper\nbuiltin toLower\nbuiltin trim\nbuiltin trimPrefix\nbuiltin trimSpace\nbuiltin trimSuffix\n\n// hack to simulate an imported strings package\nstrings = {\n  title:title,\n  toUpper:toUpper,\n  toLower:toLower,\n  trim:trim,\n  trimPrefix:trimPrefix,\n  trimSpace:trimSpace,\n  trimSuffix:trimSuffix,\n}",
+				Source: "package strings\n\n// Transformation functions\nbuiltin title\nbuiltin toUpper\nbuiltin toLower\nbuiltin trim\nbuiltin trimPrefix\nbuiltin trimSpace\nbuiltin trimSuffix\nbuiltin trimRight\nbuiltin trimLeft\nbuiltin toTitle\nbuiltin hasPrefix\nbuiltin hasSuffix\nbuiltin containsStr\nbuiltin containsAny\nbuiltin equalFold\nbuiltin compare\nbuiltin countStr\nbuiltin index\nbuiltin indexAny\nbuiltin lastIndex\nbuiltin lastIndexAny\nbuiltin isDigit\nbuiltin isLetter\nbuiltin isLower\nbuiltin isUpper\nbuiltin repeat\nbuiltin replace\nbuiltin replaceAll\nbuiltin split\nbuiltin splitAfter\nbuiltin splitN\nbuiltin splitAfterN\nbuiltin joinStr\nbuiltin strlen\nbuiltin substring",
 				Start: ast.Position{
 					Column: 1,
 					Line:   1,
@@ -270,16 +270,84 @@ var pkgAST = &ast.Package{
 				},
 				Name: "trimSuffix",
 			},
-		}, &ast.VariableAssignment{
+		}, &ast.BuiltinStatement{
 			BaseNode: ast.BaseNode{
 				Errors: nil,
 				Loc: &ast.SourceLocation{
 					End: ast.Position{
-						Column: 2,
-						Line:   21,
+						Column: 18,
+						Line:   11,
 					},
 					File:   "strings.flux",
-					Source: "strings = {\n  title:title,\n  toUpper:toUpper,\n  toLower:toLower,\n  trim:trim,\n  trimPrefix:trimPrefix,\n  trimSpace:trimSpace,\n  trimSuffix:trimSuffix,\n}",
+					Source: "builtin trimRight",
+					Start: ast.Position{
+						Column: 1,
+						Line:   11,
+					},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 18,
+							Line:   11,
+						},
+						File:   "strings.flux",
+						Source: "trimRight",
+						Start: ast.Position{
+							Column: 9,
+							Line:   11,
+						},
+					},
+				},
+				Name: "trimRight",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 17,
+						Line:   12,
+					},
+					File:   "strings.flux",
+					Source: "builtin trimLeft",
+					Start: ast.Position{
+						Column: 1,
+						Line:   12,
+					},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 17,
+							Line:   12,
+						},
+						File:   "strings.flux",
+						Source: "trimLeft",
+						Start: ast.Position{
+							Column: 9,
+							Line:   12,
+						},
+					},
+				},
+				Name: "trimLeft",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 16,
+						Line:   13,
+					},
+					File:   "strings.flux",
+					Source: "builtin toTitle",
 					Start: ast.Position{
 						Column: 1,
 						Line:   13,
@@ -291,404 +359,873 @@ var pkgAST = &ast.Package{
 					Errors: nil,
 					Loc: &ast.SourceLocation{
 						End: ast.Position{
-							Column: 8,
+							Column: 16,
 							Line:   13,
 						},
 						File:   "strings.flux",
-						Source: "strings",
+						Source: "toTitle",
 						Start: ast.Position{
-							Column: 1,
+							Column: 9,
 							Line:   13,
 						},
 					},
 				},
-				Name: "strings",
+				Name: "toTitle",
 			},
-			Init: &ast.ObjectExpression{
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 18,
+						Line:   14,
+					},
+					File:   "strings.flux",
+					Source: "builtin hasPrefix",
+					Start: ast.Position{
+						Column: 1,
+						Line:   14,
+					},
+				},
+			},
+			ID: &ast.Identifier{
 				BaseNode: ast.BaseNode{
 					Errors: nil,
 					Loc: &ast.SourceLocation{
 						End: ast.Position{
-							Column: 2,
-							Line:   21,
+							Column: 18,
+							Line:   14,
 						},
 						File:   "strings.flux",
-						Source: "{\n  title:title,\n  toUpper:toUpper,\n  toLower:toLower,\n  trim:trim,\n  trimPrefix:trimPrefix,\n  trimSpace:trimSpace,\n  trimSuffix:trimSuffix,\n}",
+						Source: "hasPrefix",
 						Start: ast.Position{
-							Column: 11,
-							Line:   13,
+							Column: 9,
+							Line:   14,
 						},
 					},
 				},
-				Properties: []*ast.Property{&ast.Property{
-					BaseNode: ast.BaseNode{
-						Errors: nil,
-						Loc: &ast.SourceLocation{
-							End: ast.Position{
-								Column: 14,
-								Line:   14,
-							},
-							File:   "strings.flux",
-							Source: "title:title",
-							Start: ast.Position{
-								Column: 3,
-								Line:   14,
-							},
+				Name: "hasPrefix",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 18,
+						Line:   15,
+					},
+					File:   "strings.flux",
+					Source: "builtin hasSuffix",
+					Start: ast.Position{
+						Column: 1,
+						Line:   15,
+					},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 18,
+							Line:   15,
+						},
+						File:   "strings.flux",
+						Source: "hasSuffix",
+						Start: ast.Position{
+							Column: 9,
+							Line:   15,
 						},
 					},
-					Key: &ast.Identifier{
-						BaseNode: ast.BaseNode{
-							Errors: nil,
-							Loc: &ast.SourceLocation{
-								End: ast.Position{
-									Column: 8,
-									Line:   14,
-								},
-								File:   "strings.flux",
-								Source: "title",
-								Start: ast.Position{
-									Column: 3,
-									Line:   14,
-								},
-							},
-						},
-						Name: "title",
+				},
+				Name: "hasSuffix",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 20,
+						Line:   16,
 					},
-					Value: &ast.Identifier{
-						BaseNode: ast.BaseNode{
-							Errors: nil,
-							Loc: &ast.SourceLocation{
-								End: ast.Position{
-									Column: 14,
-									Line:   14,
-								},
-								File:   "strings.flux",
-								Source: "title",
-								Start: ast.Position{
-									Column: 9,
-									Line:   14,
-								},
-							},
-						},
-						Name: "title",
+					File:   "strings.flux",
+					Source: "builtin containsStr",
+					Start: ast.Position{
+						Column: 1,
+						Line:   16,
 					},
-				}, &ast.Property{
-					BaseNode: ast.BaseNode{
-						Errors: nil,
-						Loc: &ast.SourceLocation{
-							End: ast.Position{
-								Column: 18,
-								Line:   15,
-							},
-							File:   "strings.flux",
-							Source: "toUpper:toUpper",
-							Start: ast.Position{
-								Column: 3,
-								Line:   15,
-							},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 20,
+							Line:   16,
+						},
+						File:   "strings.flux",
+						Source: "containsStr",
+						Start: ast.Position{
+							Column: 9,
+							Line:   16,
 						},
 					},
-					Key: &ast.Identifier{
-						BaseNode: ast.BaseNode{
-							Errors: nil,
-							Loc: &ast.SourceLocation{
-								End: ast.Position{
-									Column: 10,
-									Line:   15,
-								},
-								File:   "strings.flux",
-								Source: "toUpper",
-								Start: ast.Position{
-									Column: 3,
-									Line:   15,
-								},
-							},
-						},
-						Name: "toUpper",
+				},
+				Name: "containsStr",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 20,
+						Line:   17,
 					},
-					Value: &ast.Identifier{
-						BaseNode: ast.BaseNode{
-							Errors: nil,
-							Loc: &ast.SourceLocation{
-								End: ast.Position{
-									Column: 18,
-									Line:   15,
-								},
-								File:   "strings.flux",
-								Source: "toUpper",
-								Start: ast.Position{
-									Column: 11,
-									Line:   15,
-								},
-							},
-						},
-						Name: "toUpper",
+					File:   "strings.flux",
+					Source: "builtin containsAny",
+					Start: ast.Position{
+						Column: 1,
+						Line:   17,
 					},
-				}, &ast.Property{
-					BaseNode: ast.BaseNode{
-						Errors: nil,
-						Loc: &ast.SourceLocation{
-							End: ast.Position{
-								Column: 18,
-								Line:   16,
-							},
-							File:   "strings.flux",
-							Source: "toLower:toLower",
-							Start: ast.Position{
-								Column: 3,
-								Line:   16,
-							},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 20,
+							Line:   17,
+						},
+						File:   "strings.flux",
+						Source: "containsAny",
+						Start: ast.Position{
+							Column: 9,
+							Line:   17,
 						},
 					},
-					Key: &ast.Identifier{
-						BaseNode: ast.BaseNode{
-							Errors: nil,
-							Loc: &ast.SourceLocation{
-								End: ast.Position{
-									Column: 10,
-									Line:   16,
-								},
-								File:   "strings.flux",
-								Source: "toLower",
-								Start: ast.Position{
-									Column: 3,
-									Line:   16,
-								},
-							},
-						},
-						Name: "toLower",
+				},
+				Name: "containsAny",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 18,
+						Line:   18,
 					},
-					Value: &ast.Identifier{
-						BaseNode: ast.BaseNode{
-							Errors: nil,
-							Loc: &ast.SourceLocation{
-								End: ast.Position{
-									Column: 18,
-									Line:   16,
-								},
-								File:   "strings.flux",
-								Source: "toLower",
-								Start: ast.Position{
-									Column: 11,
-									Line:   16,
-								},
-							},
-						},
-						Name: "toLower",
+					File:   "strings.flux",
+					Source: "builtin equalFold",
+					Start: ast.Position{
+						Column: 1,
+						Line:   18,
 					},
-				}, &ast.Property{
-					BaseNode: ast.BaseNode{
-						Errors: nil,
-						Loc: &ast.SourceLocation{
-							End: ast.Position{
-								Column: 12,
-								Line:   17,
-							},
-							File:   "strings.flux",
-							Source: "trim:trim",
-							Start: ast.Position{
-								Column: 3,
-								Line:   17,
-							},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 18,
+							Line:   18,
+						},
+						File:   "strings.flux",
+						Source: "equalFold",
+						Start: ast.Position{
+							Column: 9,
+							Line:   18,
 						},
 					},
-					Key: &ast.Identifier{
-						BaseNode: ast.BaseNode{
-							Errors: nil,
-							Loc: &ast.SourceLocation{
-								End: ast.Position{
-									Column: 7,
-									Line:   17,
-								},
-								File:   "strings.flux",
-								Source: "trim",
-								Start: ast.Position{
-									Column: 3,
-									Line:   17,
-								},
-							},
-						},
-						Name: "trim",
+				},
+				Name: "equalFold",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 16,
+						Line:   19,
 					},
-					Value: &ast.Identifier{
-						BaseNode: ast.BaseNode{
-							Errors: nil,
-							Loc: &ast.SourceLocation{
-								End: ast.Position{
-									Column: 12,
-									Line:   17,
-								},
-								File:   "strings.flux",
-								Source: "trim",
-								Start: ast.Position{
-									Column: 8,
-									Line:   17,
-								},
-							},
-						},
-						Name: "trim",
+					File:   "strings.flux",
+					Source: "builtin compare",
+					Start: ast.Position{
+						Column: 1,
+						Line:   19,
 					},
-				}, &ast.Property{
-					BaseNode: ast.BaseNode{
-						Errors: nil,
-						Loc: &ast.SourceLocation{
-							End: ast.Position{
-								Column: 24,
-								Line:   18,
-							},
-							File:   "strings.flux",
-							Source: "trimPrefix:trimPrefix",
-							Start: ast.Position{
-								Column: 3,
-								Line:   18,
-							},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 16,
+							Line:   19,
+						},
+						File:   "strings.flux",
+						Source: "compare",
+						Start: ast.Position{
+							Column: 9,
+							Line:   19,
 						},
 					},
-					Key: &ast.Identifier{
-						BaseNode: ast.BaseNode{
-							Errors: nil,
-							Loc: &ast.SourceLocation{
-								End: ast.Position{
-									Column: 13,
-									Line:   18,
-								},
-								File:   "strings.flux",
-								Source: "trimPrefix",
-								Start: ast.Position{
-									Column: 3,
-									Line:   18,
-								},
-							},
-						},
-						Name: "trimPrefix",
+				},
+				Name: "compare",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 17,
+						Line:   20,
 					},
-					Value: &ast.Identifier{
-						BaseNode: ast.BaseNode{
-							Errors: nil,
-							Loc: &ast.SourceLocation{
-								End: ast.Position{
-									Column: 24,
-									Line:   18,
-								},
-								File:   "strings.flux",
-								Source: "trimPrefix",
-								Start: ast.Position{
-									Column: 14,
-									Line:   18,
-								},
-							},
-						},
-						Name: "trimPrefix",
+					File:   "strings.flux",
+					Source: "builtin countStr",
+					Start: ast.Position{
+						Column: 1,
+						Line:   20,
 					},
-				}, &ast.Property{
-					BaseNode: ast.BaseNode{
-						Errors: nil,
-						Loc: &ast.SourceLocation{
-							End: ast.Position{
-								Column: 22,
-								Line:   19,
-							},
-							File:   "strings.flux",
-							Source: "trimSpace:trimSpace",
-							Start: ast.Position{
-								Column: 3,
-								Line:   19,
-							},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 17,
+							Line:   20,
+						},
+						File:   "strings.flux",
+						Source: "countStr",
+						Start: ast.Position{
+							Column: 9,
+							Line:   20,
 						},
 					},
-					Key: &ast.Identifier{
-						BaseNode: ast.BaseNode{
-							Errors: nil,
-							Loc: &ast.SourceLocation{
-								End: ast.Position{
-									Column: 12,
-									Line:   19,
-								},
-								File:   "strings.flux",
-								Source: "trimSpace",
-								Start: ast.Position{
-									Column: 3,
-									Line:   19,
-								},
-							},
-						},
-						Name: "trimSpace",
+				},
+				Name: "countStr",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 14,
+						Line:   21,
 					},
-					Value: &ast.Identifier{
-						BaseNode: ast.BaseNode{
-							Errors: nil,
-							Loc: &ast.SourceLocation{
-								End: ast.Position{
-									Column: 22,
-									Line:   19,
-								},
-								File:   "strings.flux",
-								Source: "trimSpace",
-								Start: ast.Position{
-									Column: 13,
-									Line:   19,
-								},
-							},
-						},
-						Name: "trimSpace",
+					File:   "strings.flux",
+					Source: "builtin index",
+					Start: ast.Position{
+						Column: 1,
+						Line:   21,
 					},
-				}, &ast.Property{
-					BaseNode: ast.BaseNode{
-						Errors: nil,
-						Loc: &ast.SourceLocation{
-							End: ast.Position{
-								Column: 24,
-								Line:   20,
-							},
-							File:   "strings.flux",
-							Source: "trimSuffix:trimSuffix",
-							Start: ast.Position{
-								Column: 3,
-								Line:   20,
-							},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 14,
+							Line:   21,
+						},
+						File:   "strings.flux",
+						Source: "index",
+						Start: ast.Position{
+							Column: 9,
+							Line:   21,
 						},
 					},
-					Key: &ast.Identifier{
-						BaseNode: ast.BaseNode{
-							Errors: nil,
-							Loc: &ast.SourceLocation{
-								End: ast.Position{
-									Column: 13,
-									Line:   20,
-								},
-								File:   "strings.flux",
-								Source: "trimSuffix",
-								Start: ast.Position{
-									Column: 3,
-									Line:   20,
-								},
-							},
-						},
-						Name: "trimSuffix",
+				},
+				Name: "index",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 17,
+						Line:   22,
 					},
-					Value: &ast.Identifier{
-						BaseNode: ast.BaseNode{
-							Errors: nil,
-							Loc: &ast.SourceLocation{
-								End: ast.Position{
-									Column: 24,
-									Line:   20,
-								},
-								File:   "strings.flux",
-								Source: "trimSuffix",
-								Start: ast.Position{
-									Column: 14,
-									Line:   20,
-								},
-							},
-						},
-						Name: "trimSuffix",
+					File:   "strings.flux",
+					Source: "builtin indexAny",
+					Start: ast.Position{
+						Column: 1,
+						Line:   22,
 					},
-				}},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 17,
+							Line:   22,
+						},
+						File:   "strings.flux",
+						Source: "indexAny",
+						Start: ast.Position{
+							Column: 9,
+							Line:   22,
+						},
+					},
+				},
+				Name: "indexAny",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 18,
+						Line:   23,
+					},
+					File:   "strings.flux",
+					Source: "builtin lastIndex",
+					Start: ast.Position{
+						Column: 1,
+						Line:   23,
+					},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 18,
+							Line:   23,
+						},
+						File:   "strings.flux",
+						Source: "lastIndex",
+						Start: ast.Position{
+							Column: 9,
+							Line:   23,
+						},
+					},
+				},
+				Name: "lastIndex",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 21,
+						Line:   24,
+					},
+					File:   "strings.flux",
+					Source: "builtin lastIndexAny",
+					Start: ast.Position{
+						Column: 1,
+						Line:   24,
+					},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 21,
+							Line:   24,
+						},
+						File:   "strings.flux",
+						Source: "lastIndexAny",
+						Start: ast.Position{
+							Column: 9,
+							Line:   24,
+						},
+					},
+				},
+				Name: "lastIndexAny",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 16,
+						Line:   25,
+					},
+					File:   "strings.flux",
+					Source: "builtin isDigit",
+					Start: ast.Position{
+						Column: 1,
+						Line:   25,
+					},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 16,
+							Line:   25,
+						},
+						File:   "strings.flux",
+						Source: "isDigit",
+						Start: ast.Position{
+							Column: 9,
+							Line:   25,
+						},
+					},
+				},
+				Name: "isDigit",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 17,
+						Line:   26,
+					},
+					File:   "strings.flux",
+					Source: "builtin isLetter",
+					Start: ast.Position{
+						Column: 1,
+						Line:   26,
+					},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 17,
+							Line:   26,
+						},
+						File:   "strings.flux",
+						Source: "isLetter",
+						Start: ast.Position{
+							Column: 9,
+							Line:   26,
+						},
+					},
+				},
+				Name: "isLetter",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 16,
+						Line:   27,
+					},
+					File:   "strings.flux",
+					Source: "builtin isLower",
+					Start: ast.Position{
+						Column: 1,
+						Line:   27,
+					},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 16,
+							Line:   27,
+						},
+						File:   "strings.flux",
+						Source: "isLower",
+						Start: ast.Position{
+							Column: 9,
+							Line:   27,
+						},
+					},
+				},
+				Name: "isLower",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 16,
+						Line:   28,
+					},
+					File:   "strings.flux",
+					Source: "builtin isUpper",
+					Start: ast.Position{
+						Column: 1,
+						Line:   28,
+					},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 16,
+							Line:   28,
+						},
+						File:   "strings.flux",
+						Source: "isUpper",
+						Start: ast.Position{
+							Column: 9,
+							Line:   28,
+						},
+					},
+				},
+				Name: "isUpper",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 15,
+						Line:   29,
+					},
+					File:   "strings.flux",
+					Source: "builtin repeat",
+					Start: ast.Position{
+						Column: 1,
+						Line:   29,
+					},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 15,
+							Line:   29,
+						},
+						File:   "strings.flux",
+						Source: "repeat",
+						Start: ast.Position{
+							Column: 9,
+							Line:   29,
+						},
+					},
+				},
+				Name: "repeat",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 16,
+						Line:   30,
+					},
+					File:   "strings.flux",
+					Source: "builtin replace",
+					Start: ast.Position{
+						Column: 1,
+						Line:   30,
+					},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 16,
+							Line:   30,
+						},
+						File:   "strings.flux",
+						Source: "replace",
+						Start: ast.Position{
+							Column: 9,
+							Line:   30,
+						},
+					},
+				},
+				Name: "replace",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 19,
+						Line:   31,
+					},
+					File:   "strings.flux",
+					Source: "builtin replaceAll",
+					Start: ast.Position{
+						Column: 1,
+						Line:   31,
+					},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 19,
+							Line:   31,
+						},
+						File:   "strings.flux",
+						Source: "replaceAll",
+						Start: ast.Position{
+							Column: 9,
+							Line:   31,
+						},
+					},
+				},
+				Name: "replaceAll",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 14,
+						Line:   32,
+					},
+					File:   "strings.flux",
+					Source: "builtin split",
+					Start: ast.Position{
+						Column: 1,
+						Line:   32,
+					},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 14,
+							Line:   32,
+						},
+						File:   "strings.flux",
+						Source: "split",
+						Start: ast.Position{
+							Column: 9,
+							Line:   32,
+						},
+					},
+				},
+				Name: "split",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 19,
+						Line:   33,
+					},
+					File:   "strings.flux",
+					Source: "builtin splitAfter",
+					Start: ast.Position{
+						Column: 1,
+						Line:   33,
+					},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 19,
+							Line:   33,
+						},
+						File:   "strings.flux",
+						Source: "splitAfter",
+						Start: ast.Position{
+							Column: 9,
+							Line:   33,
+						},
+					},
+				},
+				Name: "splitAfter",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 15,
+						Line:   34,
+					},
+					File:   "strings.flux",
+					Source: "builtin splitN",
+					Start: ast.Position{
+						Column: 1,
+						Line:   34,
+					},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 15,
+							Line:   34,
+						},
+						File:   "strings.flux",
+						Source: "splitN",
+						Start: ast.Position{
+							Column: 9,
+							Line:   34,
+						},
+					},
+				},
+				Name: "splitN",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 20,
+						Line:   35,
+					},
+					File:   "strings.flux",
+					Source: "builtin splitAfterN",
+					Start: ast.Position{
+						Column: 1,
+						Line:   35,
+					},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 20,
+							Line:   35,
+						},
+						File:   "strings.flux",
+						Source: "splitAfterN",
+						Start: ast.Position{
+							Column: 9,
+							Line:   35,
+						},
+					},
+				},
+				Name: "splitAfterN",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 16,
+						Line:   36,
+					},
+					File:   "strings.flux",
+					Source: "builtin joinStr",
+					Start: ast.Position{
+						Column: 1,
+						Line:   36,
+					},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 16,
+							Line:   36,
+						},
+						File:   "strings.flux",
+						Source: "joinStr",
+						Start: ast.Position{
+							Column: 9,
+							Line:   36,
+						},
+					},
+				},
+				Name: "joinStr",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 15,
+						Line:   37,
+					},
+					File:   "strings.flux",
+					Source: "builtin strlen",
+					Start: ast.Position{
+						Column: 1,
+						Line:   37,
+					},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 15,
+							Line:   37,
+						},
+						File:   "strings.flux",
+						Source: "strlen",
+						Start: ast.Position{
+							Column: 9,
+							Line:   37,
+						},
+					},
+				},
+				Name: "strlen",
+			},
+		}, &ast.BuiltinStatement{
+			BaseNode: ast.BaseNode{
+				Errors: nil,
+				Loc: &ast.SourceLocation{
+					End: ast.Position{
+						Column: 18,
+						Line:   38,
+					},
+					File:   "strings.flux",
+					Source: "builtin substring",
+					Start: ast.Position{
+						Column: 1,
+						Line:   38,
+					},
+				},
+			},
+			ID: &ast.Identifier{
+				BaseNode: ast.BaseNode{
+					Errors: nil,
+					Loc: &ast.SourceLocation{
+						End: ast.Position{
+							Column: 18,
+							Line:   38,
+						},
+						File:   "strings.flux",
+						Source: "substring",
+						Start: ast.Position{
+							Column: 9,
+							Line:   38,
+						},
+					},
+				},
+				Name: "substring",
 			},
 		}},
-		Imports: nil,
-		Name:    "strings.flux",
+		Imports:  nil,
+		Metadata: "parser-type=go",
+		Name:     "strings.flux",
 		Package: &ast.PackageClause{
 			BaseNode: ast.BaseNode{
 				Errors: nil,

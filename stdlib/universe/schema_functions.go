@@ -1,15 +1,16 @@
 package universe
 
 import (
-	"fmt"
+	"context"
 
 	"github.com/influxdata/flux"
+	"github.com/influxdata/flux/codes"
 	"github.com/influxdata/flux/execute"
+	"github.com/influxdata/flux/internal/errors"
 	"github.com/influxdata/flux/interpreter"
 	"github.com/influxdata/flux/plan"
 	"github.com/influxdata/flux/semantic"
 	"github.com/influxdata/flux/values"
-	"github.com/pkg/errors"
 )
 
 const RenameKind = "rename"
@@ -19,17 +20,17 @@ const DuplicateKind = "duplicate"
 
 type RenameOpSpec struct {
 	Columns map[string]string            `json:"columns"`
-	Fn      *semantic.FunctionExpression `json:"fn"`
+	Fn      interpreter.ResolvedFunction `json:"fn"`
 }
 
 type DropOpSpec struct {
 	Columns   []string                     `json:"columns"`
-	Predicate *semantic.FunctionExpression `json:"fn"`
+	Predicate interpreter.ResolvedFunction `json:"fn"`
 }
 
 type KeepOpSpec struct {
 	Columns   []string                     `json:"columns"`
-	Predicate *semantic.FunctionExpression `json:"fn"`
+	Predicate interpreter.ResolvedFunction `json:"fn"`
 }
 
 type DuplicateOpSpec struct {
@@ -147,7 +148,7 @@ func createRenameOpSpec(args flux.Arguments, a *flux.Administration) (flux.Opera
 		cols = c
 	}
 
-	var renameFn *semantic.FunctionExpression
+	var renameFn interpreter.ResolvedFunction
 	if f, ok, err := args.GetFunction("fn"); err != nil {
 		return nil, err
 	} else if ok {
@@ -158,12 +159,12 @@ func createRenameOpSpec(args flux.Arguments, a *flux.Administration) (flux.Opera
 		}
 	}
 
-	if cols == nil && renameFn == nil {
-		return nil, errors.New("rename error: neither column list nor map function provided")
+	if cols == nil && renameFn.Fn == nil {
+		return nil, errors.New(codes.Invalid, "rename error: neither column list nor map function provided")
 	}
 
-	if cols != nil && renameFn != nil {
-		return nil, errors.New("rename error: both column list and map function provided")
+	if cols != nil && renameFn.Fn != nil {
+		return nil, errors.New(codes.Invalid, "rename error: both column list and map function provided")
 	}
 
 	spec := &RenameOpSpec{
@@ -179,7 +180,7 @@ func createRenameOpSpec(args flux.Arguments, a *flux.Administration) (flux.Opera
 				return
 			}
 			if v.Type() != semantic.String {
-				err = fmt.Errorf("rename error: columns object contains non-string value of type %s", v.Type())
+				err = errors.Newf(codes.Invalid, "rename error: columns object contains non-string value of type %s", v.Type())
 				return
 			}
 			renameCols[name] = v.Str()
@@ -205,7 +206,7 @@ func createDropOpSpec(args flux.Arguments, a *flux.Administration) (flux.Operati
 		cols = c
 	}
 
-	var dropPredicate *semantic.FunctionExpression
+	var dropPredicate interpreter.ResolvedFunction
 	if f, ok, err := args.GetFunction("fn"); err != nil {
 		return nil, err
 	} else if ok {
@@ -217,12 +218,12 @@ func createDropOpSpec(args flux.Arguments, a *flux.Administration) (flux.Operati
 		dropPredicate = fn
 	}
 
-	if cols == nil && dropPredicate == nil {
-		return nil, errors.New("drop error: neither column list nor predicate function provided")
+	if cols == nil && dropPredicate.Fn == nil {
+		return nil, errors.New(codes.Invalid, "drop error: neither column list nor predicate function provided")
 	}
 
-	if cols != nil && dropPredicate != nil {
-		return nil, errors.New("drop error: both column list and predicate provided")
+	if cols != nil && dropPredicate.Fn != nil {
+		return nil, errors.New(codes.Invalid, "drop error: both column list and predicate provided")
 	}
 
 	var dropCols []string
@@ -252,7 +253,7 @@ func createKeepOpSpec(args flux.Arguments, a *flux.Administration) (flux.Operati
 		cols = c
 	}
 
-	var keepPredicate *semantic.FunctionExpression
+	var keepPredicate interpreter.ResolvedFunction
 	if f, ok, err := args.GetFunction("fn"); err != nil {
 		return nil, err
 	} else if ok {
@@ -264,12 +265,12 @@ func createKeepOpSpec(args flux.Arguments, a *flux.Administration) (flux.Operati
 		keepPredicate = fn
 	}
 
-	if cols == nil && keepPredicate == nil {
-		return nil, errors.New("keep error: neither column list nor predicate function provided")
+	if cols == nil && keepPredicate.Fn == nil {
+		return nil, errors.New(codes.Invalid, "keep error: neither column list nor predicate function provided")
 	}
 
-	if cols != nil && keepPredicate != nil {
-		return nil, errors.New("keep error: both column list and predicate provided")
+	if cols != nil && keepPredicate.Fn != nil {
+		return nil, errors.New(codes.Invalid, "keep error: both column list and predicate provided")
 	}
 
 	var keepCols []string
@@ -348,7 +349,7 @@ func (s *RenameOpSpec) Copy() SchemaMutation {
 
 	return &RenameOpSpec{
 		Columns: newCols,
-		Fn:      s.Fn.Copy().(*semantic.FunctionExpression),
+		Fn:      s.Fn.Copy(),
 	}
 }
 
@@ -358,7 +359,7 @@ func (s *DropOpSpec) Copy() SchemaMutation {
 
 	return &DropOpSpec{
 		Columns:   newCols,
-		Predicate: s.Predicate.Copy().(*semantic.FunctionExpression),
+		Predicate: s.Predicate.Copy(),
 	}
 }
 
@@ -368,7 +369,7 @@ func (s *KeepOpSpec) Copy() SchemaMutation {
 
 	return &KeepOpSpec{
 		Columns:   newCols,
-		Predicate: s.Predicate.Copy().(*semantic.FunctionExpression),
+		Predicate: s.Predicate.Copy(),
 	}
 }
 
@@ -434,7 +435,7 @@ func (s *SchemaMutationProcedureSpec) Copy() plan.ProcedureSpec {
 func newSchemaMutationProcedure(qs flux.OperationSpec, pa plan.Administration) (plan.ProcedureSpec, error) {
 	s, ok := qs.(SchemaMutation)
 	if !ok {
-		return nil, fmt.Errorf("invalid spec type %T doesn't implement SchemaMutation", qs)
+		return nil, errors.Newf(codes.Internal, "invalid spec type %T doesn't implement SchemaMutation", qs)
 	}
 
 	return &SchemaMutationProcedureSpec{
@@ -445,6 +446,7 @@ func newSchemaMutationProcedure(qs flux.OperationSpec, pa plan.Administration) (
 type schemaMutationTransformation struct {
 	d        execute.Dataset
 	cache    execute.TableBuilderCache
+	ctx      context.Context
 	mutators []SchemaMutator
 }
 
@@ -452,17 +454,17 @@ func createSchemaMutationTransformation(id execute.DatasetID, mode execute.Accum
 	cache := execute.NewTableBuilderCache(a.Allocator())
 	d := execute.NewDataset(id, mode, cache)
 
-	t, err := NewSchemaMutationTransformation(d, cache, spec)
+	t, err := NewSchemaMutationTransformation(a.Context(), spec, d, cache)
 	if err != nil {
 		return nil, nil, err
 	}
 	return t, d, nil
 }
 
-func NewSchemaMutationTransformation(d execute.Dataset, cache execute.TableBuilderCache, spec plan.ProcedureSpec) (*schemaMutationTransformation, error) {
+func NewSchemaMutationTransformation(ctx context.Context, spec plan.ProcedureSpec, d execute.Dataset, cache execute.TableBuilderCache) (*schemaMutationTransformation, error) {
 	s, ok := spec.(*SchemaMutationProcedureSpec)
 	if !ok {
-		return nil, fmt.Errorf("invalid spec type %T", spec)
+		return nil, errors.Newf(codes.Internal, "invalid spec type %T", spec)
 	}
 
 	mutators := make([]SchemaMutator, len(s.Mutations))
@@ -478,13 +480,14 @@ func NewSchemaMutationTransformation(d execute.Dataset, cache execute.TableBuild
 		d:        d,
 		cache:    cache,
 		mutators: mutators,
+		ctx:      ctx,
 	}, nil
 }
 
 func (t *schemaMutationTransformation) Process(id execute.DatasetID, tbl flux.Table) error {
 	ctx := NewBuilderContext(tbl)
 	for _, m := range t.mutators {
-		err := m.Mutate(ctx)
+		err := m.Mutate(t.ctx, ctx)
 		if err != nil {
 			return err
 		}
@@ -496,6 +499,20 @@ func (t *schemaMutationTransformation) Process(id execute.DatasetID, tbl flux.Ta
 			_, err := builder.AddCol(c)
 			if err != nil {
 				return err
+			}
+		}
+	} else {
+		// We are appending to an existing table, due to dropping columns in the group key.
+		// Make sure that tables are compatible.
+		if len(ctx.Cols()) != len(builder.Cols()) {
+			key := builder.Key().String()
+			return errors.New(codes.Invalid, "requested operation merges tables with different numbers of columns for group key "+key)
+		}
+		for i, cm := range ctx.Cols() {
+			bcm := builder.Cols()[i]
+			if cm != bcm {
+				key := builder.Key().String()
+				return errors.New(codes.Invalid, "requested operation merges tables with different schemas for group key "+key)
 			}
 		}
 	}
