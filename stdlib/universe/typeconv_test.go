@@ -6,8 +6,8 @@ import (
 	"math"
 	"testing"
 
-	"github.com/influxdata/flux/dependencies/dependenciestest"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux/dependencies/dependenciestest"
+	"github.com/wolffcm/flux/values"
 )
 
 func TestTypeconv_String(t *testing.T) {

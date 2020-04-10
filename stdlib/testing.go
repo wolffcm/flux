@@ -1,6 +1,6 @@
 package stdlib
 
-import ast "github.com/influxdata/flux/ast"
+import ast "github.com/wolffcm/flux/ast"
 
 // TestingRunCalls constructs an ast.File that calls testing.run for each test case within the package.
 func TestingRunCalls(pkg *ast.Package) *ast.File {

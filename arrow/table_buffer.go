@@ -2,9 +2,9 @@ package arrow
 
 import (
 	"github.com/apache/arrow/go/arrow/array"
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/internal/errors"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/internal/errors"
 )
 
 // TableBuffer represents the buffered component of an arrow table.

@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/influxdata/flux/semantic"
+	"github.com/wolffcm/flux/semantic"
 )
 
 type Object interface {

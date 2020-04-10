@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/execute/executetest"
-	"github.com/influxdata/flux/querytest"
-	"github.com/influxdata/flux/stdlib/universe"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/execute/executetest"
+	"github.com/wolffcm/flux/querytest"
+	"github.com/wolffcm/flux/stdlib/universe"
 )
 
 func TestExponentialMovingAverageOperation_Marshaling(t *testing.T) {

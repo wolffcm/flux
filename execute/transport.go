@@ -6,7 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/influxdata/flux"
+	"github.com/wolffcm/flux"
 	"github.com/opentracing/opentracing-go"
 )
 

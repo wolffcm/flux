@@ -5,7 +5,7 @@ import (
 	"sort"
 
 	"github.com/apache/arrow/go/arrow"
-	"github.com/influxdata/flux"
+	"github.com/wolffcm/flux"
 )
 
 // GroupLookup is a container that maps group keys to a value.

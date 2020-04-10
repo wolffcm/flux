@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/apache/arrow/go/arrow/memory"
-	"github.com/influxdata/flux/internal/mutable"
+	"github.com/wolffcm/flux/internal/mutable"
 )
 
 func TestInt64Array_Append(t *testing.T) {

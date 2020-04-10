@@ -10,14 +10,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/ast"
-	_ "github.com/influxdata/flux/builtin"
-	_ "github.com/influxdata/flux/csv"
-	"github.com/influxdata/flux/dependencies/dependenciestest"
-	"github.com/influxdata/flux/lang"
-	"github.com/influxdata/flux/memory"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/ast"
+	_ "github.com/wolffcm/flux/builtin"
+	_ "github.com/wolffcm/flux/csv"
+	"github.com/wolffcm/flux/dependencies/dependenciestest"
+	"github.com/wolffcm/flux/lang"
+	"github.com/wolffcm/flux/memory"
+	"github.com/wolffcm/flux/values"
 )
 
 func TestPagerduty(t *testing.T) {

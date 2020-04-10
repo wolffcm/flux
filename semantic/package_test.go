@@ -3,11 +3,11 @@ package semantic_test
 import (
 	"testing"
 
-	"github.com/influxdata/flux/ast"
+	"github.com/wolffcm/flux/ast"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/influxdata/flux/parser"
-	"github.com/influxdata/flux/semantic"
+	"github.com/wolffcm/flux/parser"
+	"github.com/wolffcm/flux/semantic"
 )
 
 func TestCreatePackage(t *testing.T) {

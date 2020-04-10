@@ -7,14 +7,14 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/dependencies/dependenciestest"
-	"github.com/influxdata/flux/execute/executetest"
-	"github.com/influxdata/flux/lang/langtest"
-	"github.com/influxdata/flux/semantic"
-	"github.com/influxdata/flux/stdlib/universe"
-	"github.com/influxdata/flux/values"
-	"github.com/influxdata/flux/values/objects"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/dependencies/dependenciestest"
+	"github.com/wolffcm/flux/execute/executetest"
+	"github.com/wolffcm/flux/lang/langtest"
+	"github.com/wolffcm/flux/semantic"
+	"github.com/wolffcm/flux/stdlib/universe"
+	"github.com/wolffcm/flux/values"
+	"github.com/wolffcm/flux/values/objects"
 )
 
 var (

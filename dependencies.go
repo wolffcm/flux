@@ -2,12 +2,12 @@ package flux
 
 import (
 	"context"
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/dependencies/filesystem"
-	"github.com/influxdata/flux/dependencies/http"
-	"github.com/influxdata/flux/dependencies/secret"
-	"github.com/influxdata/flux/dependencies/url"
-	"github.com/influxdata/flux/internal/errors"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/dependencies/filesystem"
+	"github.com/wolffcm/flux/dependencies/http"
+	"github.com/wolffcm/flux/dependencies/secret"
+	"github.com/wolffcm/flux/dependencies/url"
+	"github.com/wolffcm/flux/internal/errors"
 )
 
 var _ Dependencies = (*Deps)(nil)

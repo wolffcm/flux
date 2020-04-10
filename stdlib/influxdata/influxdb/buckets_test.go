@@ -3,9 +3,9 @@ package influxdb_test
 import (
 	"testing"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/querytest"
-	"github.com/influxdata/flux/stdlib/influxdata/influxdb"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/querytest"
+	"github.com/wolffcm/flux/stdlib/influxdata/influxdb"
 )
 
 func TestBuckets_NewQuery(t *testing.T) {

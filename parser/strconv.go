@@ -3,8 +3,8 @@ package parser
 import (
 	"unicode/utf8"
 
-	"github.com/influxdata/flux/ast"
-	"github.com/influxdata/flux/internal/parser"
+	"github.com/wolffcm/flux/ast"
+	"github.com/wolffcm/flux/internal/parser"
 )
 
 // ParseTime will convert a string into an *ast.DateTimeLiteral.

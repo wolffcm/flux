@@ -1,8 +1,8 @@
 package v1
 
 import (
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/semantic"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/semantic"
 )
 
 const DatabasesKind = "databases"

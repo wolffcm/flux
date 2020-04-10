@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/internal/errors"
-	"github.com/influxdata/flux/interpreter"
-	"github.com/influxdata/flux/plan"
-	"github.com/influxdata/flux/semantic"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/internal/errors"
+	"github.com/wolffcm/flux/interpreter"
+	"github.com/wolffcm/flux/plan"
+	"github.com/wolffcm/flux/semantic"
 )
 
 const ExperimentalGroupKind = "experimental-group"
@@ -22,7 +22,7 @@ const (
 // GroupOpSpec in package experimental defines a special group() function
 // that has just one mode called "extend", which adds additional columns to the group key.
 // This is a workaround until schema introspection is implemented:
-//   https://github.com/influxdata/flux/issues/27
+//   https://github.com/wolffcm/flux/issues/27
 // Most of this code has simply been copied from stdlib/universe/group.go
 type GroupOpSpec struct {
 	Mode    string   `json:"mode"`

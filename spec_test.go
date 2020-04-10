@@ -12,15 +12,15 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/dependencies/dependenciestest"
-	"github.com/influxdata/flux/interpreter"
-	"github.com/influxdata/flux/parser"
-	"github.com/influxdata/flux/semantic"
-	_ "github.com/influxdata/flux/stdlib" // Import stdlib
-	"github.com/influxdata/flux/stdlib/influxdata/influxdb"
-	"github.com/influxdata/flux/stdlib/universe"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/dependencies/dependenciestest"
+	"github.com/wolffcm/flux/interpreter"
+	"github.com/wolffcm/flux/parser"
+	"github.com/wolffcm/flux/semantic"
+	_ "github.com/wolffcm/flux/stdlib" // Import stdlib
+	"github.com/wolffcm/flux/stdlib/influxdata/influxdb"
+	"github.com/wolffcm/flux/stdlib/universe"
+	"github.com/wolffcm/flux/values"
 )
 
 func init() {

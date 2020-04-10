@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/influxdata/flux"
+	"github.com/wolffcm/flux"
 )
 
 type Planner interface {

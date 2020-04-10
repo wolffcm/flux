@@ -3,7 +3,7 @@
 package runtime
 
 import (
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux/values"
 )
 
 func Version() (values.Value, error) {

@@ -6,10 +6,10 @@ package promql
 import (
 	"fmt"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/plan"
-	"github.com/influxdata/flux/semantic"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/plan"
+	"github.com/wolffcm/flux/semantic"
 )
 
 const HoltWintersKind = "promHoltWinters"

@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/influxdata/flux/ast"
-	"github.com/influxdata/flux/internal/token"
+	"github.com/wolffcm/flux/ast"
+	"github.com/wolffcm/flux/internal/token"
 )
 
 const defaultPackageName = "main"
