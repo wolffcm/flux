@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/memory"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/memory"
 )
 
 func TestTable(t *testing.T) {

@@ -3,11 +3,11 @@ package table
 import (
 	"github.com/apache/arrow/go/arrow/array"
 	"github.com/apache/arrow/go/arrow/memory"
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/arrow"
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/internal/errors"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/arrow"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/internal/errors"
 )
 
 // ArrowBuilder is a Builder that uses arrow array builders

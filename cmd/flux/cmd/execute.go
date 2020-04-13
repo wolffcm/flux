@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/influxdata/flux"
-	_ "github.com/influxdata/flux/builtin"
-	"github.com/influxdata/flux/dependencies/filesystem"
-	"github.com/influxdata/flux/repl"
+	"github.com/wolffcm/flux"
+	_ "github.com/wolffcm/flux/builtin"
+	"github.com/wolffcm/flux/dependencies/filesystem"
+	"github.com/wolffcm/flux/repl"
 	"github.com/spf13/cobra"
 )
 

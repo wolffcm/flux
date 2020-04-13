@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/influxdata/flux/semantic"
+	"github.com/wolffcm/flux/semantic"
 )
 
 // Function represents a callable type

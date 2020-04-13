@@ -3,10 +3,10 @@ package edit_test
 import (
 	"testing"
 
-	"github.com/influxdata/flux/ast"
-	"github.com/influxdata/flux/ast/edit"
-	"github.com/influxdata/flux/parser"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux/ast"
+	"github.com/wolffcm/flux/ast/edit"
+	"github.com/wolffcm/flux/parser"
+	"github.com/wolffcm/flux/values"
 )
 
 func TestEditor(t *testing.T) {

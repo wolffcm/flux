@@ -6,11 +6,11 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/execute/executetest"
-	"github.com/influxdata/flux/plan"
-	"github.com/influxdata/flux/stdlib/universe"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/execute/executetest"
+	"github.com/wolffcm/flux/plan"
+	"github.com/wolffcm/flux/stdlib/universe"
 )
 
 func TestMinRowSelector_Process(t *testing.T) {

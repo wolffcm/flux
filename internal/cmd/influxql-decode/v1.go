@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/influxdata/flux/influxql"
+	"github.com/wolffcm/flux/influxql"
 	"github.com/spf13/cobra"
 )
 

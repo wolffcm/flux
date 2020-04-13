@@ -3,8 +3,8 @@ package execute
 import (
 	"io"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/values"
 )
 
 type RowReader interface {

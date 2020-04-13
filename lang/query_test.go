@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/influxdata/flux"
-	_ "github.com/influxdata/flux/builtin"
-	"github.com/influxdata/flux/execute/executetest"
-	"github.com/influxdata/flux/lang"
-	"github.com/influxdata/flux/memory"
-	"github.com/influxdata/flux/runtime"
+	"github.com/wolffcm/flux"
+	_ "github.com/wolffcm/flux/builtin"
+	"github.com/wolffcm/flux/execute/executetest"
+	"github.com/wolffcm/flux/lang"
+	"github.com/wolffcm/flux/memory"
+	"github.com/wolffcm/flux/runtime"
 )
 
 func runQuery(script string) (flux.Query, error) {

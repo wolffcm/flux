@@ -3,7 +3,7 @@ package csv
 import (
 	"net/http"
 
-	"github.com/influxdata/flux"
+	"github.com/wolffcm/flux"
 )
 
 const DialectType = "csv"

@@ -3,9 +3,9 @@ package flux
 import (
 	"context"
 
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/internal/errors"
-	"github.com/influxdata/flux/memory"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/internal/errors"
+	"github.com/wolffcm/flux/memory"
 )
 
 // Compiler produces a specification for the query.

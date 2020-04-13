@@ -3,8 +3,8 @@
 package generate
 
 import (
-	ast "github.com/influxdata/flux/ast"
-	runtime "github.com/influxdata/flux/runtime"
+	ast "github.com/wolffcm/flux/ast"
+	runtime "github.com/wolffcm/flux/runtime"
 )
 
 func init() {

@@ -6,9 +6,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/internal/errors"
-	"github.com/influxdata/flux/semantic"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/internal/errors"
+	"github.com/wolffcm/flux/semantic"
 )
 
 // Array represents an sequence of elements

@@ -2,8 +2,8 @@ package mock
 
 import (
 	"context"
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/internal/errors"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/internal/errors"
 )
 
 type SecretService map[string]string

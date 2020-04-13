@@ -5,14 +5,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/influxdata/flux"
-	_ "github.com/influxdata/flux/builtin"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/execute/executetest"
-	"github.com/influxdata/flux/querytest"
-	"github.com/influxdata/flux/stdlib/experimental"
-	"github.com/influxdata/flux/stdlib/influxdata/influxdb"
-	"github.com/influxdata/flux/stdlib/universe"
+	"github.com/wolffcm/flux"
+	_ "github.com/wolffcm/flux/builtin"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/execute/executetest"
+	"github.com/wolffcm/flux/querytest"
+	"github.com/wolffcm/flux/stdlib/experimental"
+	"github.com/wolffcm/flux/stdlib/influxdata/influxdb"
+	"github.com/wolffcm/flux/stdlib/universe"
 )
 
 func TestGroupOperation_Marshaling(t *testing.T) {

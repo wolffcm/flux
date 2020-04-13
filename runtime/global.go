@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/ast"
-	"github.com/influxdata/flux/interpreter"
-	"github.com/influxdata/flux/parser"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/ast"
+	"github.com/wolffcm/flux/interpreter"
+	"github.com/wolffcm/flux/parser"
+	"github.com/wolffcm/flux/values"
 )
 
 // RegisterPackage adds a builtin package

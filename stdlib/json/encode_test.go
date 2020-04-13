@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	_ "github.com/influxdata/flux/builtin"
-	"github.com/influxdata/flux/dependencies/dependenciestest"
-	"github.com/influxdata/flux/runtime"
+	_ "github.com/wolffcm/flux/builtin"
+	"github.com/wolffcm/flux/dependencies/dependenciestest"
+	"github.com/wolffcm/flux/runtime"
 )
 
 func TestJSONEncode(t *testing.T) {

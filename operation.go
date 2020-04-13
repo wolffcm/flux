@@ -3,8 +3,8 @@ package flux
 import (
 	"encoding/json"
 
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/internal/errors"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/internal/errors"
 )
 
 // Operation denotes a single operation in a query.

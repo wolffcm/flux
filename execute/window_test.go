@@ -5,10 +5,10 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/internal/errors"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/internal/errors"
+	"github.com/wolffcm/flux/values"
 )
 
 func TestNewWindow(t *testing.T) {

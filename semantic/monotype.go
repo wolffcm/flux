@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	flatbuffers "github.com/google/flatbuffers/go"
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/internal/errors"
-	"github.com/influxdata/flux/internal/fbsemantic"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/internal/errors"
+	"github.com/wolffcm/flux/internal/fbsemantic"
 )
 
 type fbTabler interface {

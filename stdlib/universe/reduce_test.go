@@ -4,14 +4,14 @@ import (
 	"context"
 	"testing"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/dependencies/dependenciestest"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/execute/executetest"
-	"github.com/influxdata/flux/interpreter"
-	"github.com/influxdata/flux/stdlib/universe"
-	"github.com/influxdata/flux/values"
-	"github.com/influxdata/flux/values/valuestest"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/dependencies/dependenciestest"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/execute/executetest"
+	"github.com/wolffcm/flux/interpreter"
+	"github.com/wolffcm/flux/stdlib/universe"
+	"github.com/wolffcm/flux/values"
+	"github.com/wolffcm/flux/values/valuestest"
 )
 
 func TestReduce_Process(t *testing.T) {

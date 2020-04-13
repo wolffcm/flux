@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/influxdata/flux/dependencies/dependenciestest"
-	"github.com/influxdata/flux/internal/spec"
-	"github.com/influxdata/flux/plan"
-	"github.com/influxdata/flux/plan/plantest"
-	"github.com/influxdata/flux/runtime"
-	"github.com/influxdata/flux/stdlib/influxdata/influxdb"
+	"github.com/wolffcm/flux/dependencies/dependenciestest"
+	"github.com/wolffcm/flux/internal/spec"
+	"github.com/wolffcm/flux/plan"
+	"github.com/wolffcm/flux/plan/plantest"
+	"github.com/wolffcm/flux/runtime"
+	"github.com/wolffcm/flux/stdlib/influxdata/influxdb"
 )
 
 func init() {

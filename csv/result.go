@@ -13,14 +13,14 @@ import (
 	"unicode/utf8"
 
 	"github.com/apache/arrow/go/arrow/array"
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/arrow"
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/internal/errors"
-	"github.com/influxdata/flux/iocounter"
-	"github.com/influxdata/flux/memory"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/arrow"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/internal/errors"
+	"github.com/wolffcm/flux/iocounter"
+	"github.com/wolffcm/flux/memory"
+	"github.com/wolffcm/flux/values"
 )
 
 const (
@@ -386,7 +386,7 @@ func readMetadata(r *csv.Reader, c ResultDecoderConfig, extraLine []string) (tab
 				return tableMetadata{}, errors.Wrap(err, codes.Inherit, "failed to read error value")
 			}
 			// TODO: We should determine the correct error code here:
-			//   https://github.com/influxdata/flux/issues/1916
+			//   https://github.com/wolffcm/flux/issues/1916
 			return tableMetadata{}, &serializedFluxError{err: errors.New(codes.Internal, line[1])}
 		}
 

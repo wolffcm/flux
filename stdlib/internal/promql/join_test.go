@@ -6,14 +6,14 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/influxdata/flux"
-	_ "github.com/influxdata/flux/builtin"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/execute/executetest"
-	"github.com/influxdata/flux/interpreter"
-	"github.com/influxdata/flux/stdlib/internal/promql"
-	"github.com/influxdata/flux/values"
-	"github.com/influxdata/flux/values/valuestest"
+	"github.com/wolffcm/flux"
+	_ "github.com/wolffcm/flux/builtin"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/execute/executetest"
+	"github.com/wolffcm/flux/interpreter"
+	"github.com/wolffcm/flux/stdlib/internal/promql"
+	"github.com/wolffcm/flux/values"
+	"github.com/wolffcm/flux/values/valuestest"
 )
 
 func TestJoin(t *testing.T) {

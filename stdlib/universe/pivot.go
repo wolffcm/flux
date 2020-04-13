@@ -8,18 +8,18 @@ import (
 
 	"github.com/apache/arrow/go/arrow/array"
 	arrowmemory "github.com/apache/arrow/go/arrow/memory"
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/arrow"
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/internal/errors"
-	"github.com/influxdata/flux/internal/execute/table"
-	"github.com/influxdata/flux/interpreter"
-	"github.com/influxdata/flux/memory"
-	"github.com/influxdata/flux/plan"
-	"github.com/influxdata/flux/runtime"
-	"github.com/influxdata/flux/semantic"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/arrow"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/internal/errors"
+	"github.com/wolffcm/flux/internal/execute/table"
+	"github.com/wolffcm/flux/interpreter"
+	"github.com/wolffcm/flux/memory"
+	"github.com/wolffcm/flux/plan"
+	"github.com/wolffcm/flux/runtime"
+	"github.com/wolffcm/flux/semantic"
+	"github.com/wolffcm/flux/values"
 )
 
 //go:generate -command tmpl ../../gotool.sh github.com/benbjohnson/tmpl
@@ -110,13 +110,13 @@ type PivotProcedureSpec struct {
 	// IsSortedByFunc is a function that can be set by the planner
 	// that can be used to determine if the parent is sorted by
 	// the given columns.
-	// TODO(jsternberg): See https://github.com/influxdata/flux/issues/2131 for details.
+	// TODO(jsternberg): See https://github.com/wolffcm/flux/issues/2131 for details.
 	IsSortedByFunc func(cols []string, desc bool) bool
 
 	// IsKeyColumnFunc is a function that can be set by the planner
 	// that can be used to determine if the given column would be
 	// part of the group key if it were present.
-	// TODO(jsternberg): See https://github.com/influxdata/flux/issues/2131 for details.
+	// TODO(jsternberg): See https://github.com/wolffcm/flux/issues/2131 for details.
 	IsKeyColumnFunc func(label string) bool
 }
 
@@ -559,7 +559,7 @@ func (t *pivotTransformation2) validateTable(tbl flux.Table) error {
 func (t *pivotTransformation2) computeGroupKey(key flux.GroupKey) flux.GroupKey {
 	// TODO(jsternberg): This can be optimized further when we
 	// refactor the group key implementation so it is more composable.
-	// https://github.com/influxdata/flux/issues/1032
+	// https://github.com/wolffcm/flux/issues/1032
 	// There's no requirement for us to copy the group key here
 	// as this is a simple filter and we also don't even know if
 	// we're going to even filter anything when we compute this.

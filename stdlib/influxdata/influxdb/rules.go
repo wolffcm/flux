@@ -1,8 +1,8 @@
 package influxdb
 
 import (
-	"github.com/influxdata/flux/plan"
-	"github.com/influxdata/flux/stdlib/universe"
+	"github.com/wolffcm/flux/plan"
+	"github.com/wolffcm/flux/stdlib/universe"
 )
 
 type FromRemoteRule struct{}

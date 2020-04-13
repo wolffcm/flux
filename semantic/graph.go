@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/influxdata/flux/ast"
+	"github.com/wolffcm/flux/ast"
 )
 
 type Node interface {

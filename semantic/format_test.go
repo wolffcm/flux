@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/influxdata/flux/runtime"
-	"github.com/influxdata/flux/semantic"
+	"github.com/wolffcm/flux/runtime"
+	"github.com/wolffcm/flux/semantic"
 )
 
 func TestFormatted(t *testing.T) {

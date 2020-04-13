@@ -5,11 +5,11 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/influxdata/flux/compiler"
-	"github.com/influxdata/flux/runtime"
-	"github.com/influxdata/flux/semantic"
-	"github.com/influxdata/flux/semantic/semantictest"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux/compiler"
+	"github.com/wolffcm/flux/runtime"
+	"github.com/wolffcm/flux/semantic"
+	"github.com/wolffcm/flux/semantic/semantictest"
+	"github.com/wolffcm/flux/values"
 )
 
 var CmpOptions = semantictest.CmpOptions

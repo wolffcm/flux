@@ -3,9 +3,9 @@
 package influxql
 
 import (
-	ast "github.com/influxdata/flux/ast"
-	parser "github.com/influxdata/flux/internal/parser"
-	runtime "github.com/influxdata/flux/runtime"
+	ast "github.com/wolffcm/flux/ast"
+	parser "github.com/wolffcm/flux/internal/parser"
+	runtime "github.com/wolffcm/flux/runtime"
 )
 
 func init() {

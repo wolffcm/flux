@@ -5,8 +5,8 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/influxdata/flux/ast"
-	"github.com/influxdata/flux/parser"
+	"github.com/wolffcm/flux/ast"
+	"github.com/wolffcm/flux/parser"
 )
 
 func TestParseSignedDuration(t *testing.T) {

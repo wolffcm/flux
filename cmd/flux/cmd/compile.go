@@ -6,9 +6,9 @@ import (
 	"io/ioutil"
 	"os"
 
-	_ "github.com/influxdata/flux/builtin"
-	"github.com/influxdata/flux/lang"
-	"github.com/influxdata/flux/runtime"
+	_ "github.com/wolffcm/flux/builtin"
+	"github.com/wolffcm/flux/lang"
+	"github.com/wolffcm/flux/runtime"
 	"github.com/spf13/cobra"
 )
 

@@ -6,12 +6,12 @@ import (
 	"os"
 	"testing"
 
-	_ "github.com/influxdata/flux/builtin"
-	"github.com/influxdata/flux/dependencies/dependenciestest"
-	"github.com/influxdata/flux/interpreter"
-	"github.com/influxdata/flux/parser"
-	"github.com/influxdata/flux/runtime"
-	"github.com/influxdata/flux/values"
+	_ "github.com/wolffcm/flux/builtin"
+	"github.com/wolffcm/flux/dependencies/dependenciestest"
+	"github.com/wolffcm/flux/interpreter"
+	"github.com/wolffcm/flux/parser"
+	"github.com/wolffcm/flux/runtime"
+	"github.com/wolffcm/flux/values"
 )
 
 func TestEval(t *testing.T) {

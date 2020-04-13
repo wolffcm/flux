@@ -1,7 +1,7 @@
 package runtime_test
 
 import (
-	"github.com/influxdata/flux/runtime"
+	"github.com/wolffcm/flux/runtime"
 	"testing"
 )
 

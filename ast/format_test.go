@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/influxdata/flux/ast"
-	"github.com/influxdata/flux/parser"
+	"github.com/wolffcm/flux/ast"
+	"github.com/wolffcm/flux/parser"
 )
 
 var skip = map[string]string{

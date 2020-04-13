@@ -5,17 +5,17 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/dependencies/dependenciestest"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/execute/executetest"
-	"github.com/influxdata/flux/interpreter"
-	"github.com/influxdata/flux/querytest"
-	"github.com/influxdata/flux/runtime"
-	"github.com/influxdata/flux/stdlib/influxdata/influxdb"
-	"github.com/influxdata/flux/stdlib/universe"
-	"github.com/influxdata/flux/values"
-	"github.com/influxdata/flux/values/valuestest"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/dependencies/dependenciestest"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/execute/executetest"
+	"github.com/wolffcm/flux/interpreter"
+	"github.com/wolffcm/flux/querytest"
+	"github.com/wolffcm/flux/runtime"
+	"github.com/wolffcm/flux/stdlib/influxdata/influxdb"
+	"github.com/wolffcm/flux/stdlib/universe"
+	"github.com/wolffcm/flux/values"
+	"github.com/wolffcm/flux/values/valuestest"
 )
 
 func TestMap_NewQuery(t *testing.T) {

@@ -10,13 +10,13 @@ import (
 	"os"
 	"strings"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/influxql"
-	"github.com/influxdata/flux/internal/errors"
-	"github.com/influxdata/flux/plan"
-	"github.com/influxdata/flux/runtime"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/influxql"
+	"github.com/wolffcm/flux/internal/errors"
+	"github.com/wolffcm/flux/plan"
+	"github.com/wolffcm/flux/runtime"
 )
 
 const FromInfluxJSONKind = "fromInfluxJSON"

@@ -3,8 +3,8 @@
 package influxql
 
 import (
-	ast "github.com/influxdata/flux/ast"
-	parser "github.com/influxdata/flux/internal/parser"
+	ast "github.com/wolffcm/flux/ast"
+	parser "github.com/wolffcm/flux/internal/parser"
 	"regexp"
 )
 

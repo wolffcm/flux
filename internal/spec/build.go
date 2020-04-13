@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/interpreter"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/interpreter"
 	"github.com/opentracing/opentracing-go"
 )
 

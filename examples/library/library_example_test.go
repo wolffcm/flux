@@ -1,10 +1,10 @@
 package library_test
 
 import (
-	_ "github.com/influxdata/flux/builtin"
+	_ "github.com/wolffcm/flux/builtin"
 )
 
-// TODO (faith): https://github.com/influxdata/flux/issues/2476; this is not a test function,
+// TODO (faith): https://github.com/wolffcm/flux/issues/2476; this is not a test function,
 // but it was causing tests in CI to fail. Issue to fix this function outlined above.
 //func Example_fromGenerator() {
 //	t := `import g "generate"

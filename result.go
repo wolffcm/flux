@@ -4,9 +4,9 @@ import (
 	"io"
 
 	"github.com/apache/arrow/go/arrow/array"
-	"github.com/influxdata/flux/iocounter"
-	"github.com/influxdata/flux/semantic"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux/iocounter"
+	"github.com/wolffcm/flux/semantic"
+	"github.com/wolffcm/flux/values"
 )
 
 type Result interface {

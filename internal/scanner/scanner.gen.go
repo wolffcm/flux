@@ -1,7 +1,7 @@
 //line scanner.rl:1
 package scanner
 
-import "github.com/influxdata/flux/internal/token"
+import "github.com/wolffcm/flux/internal/token"
 
 //line scanner.rl:128
 

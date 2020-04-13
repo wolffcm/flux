@@ -14,15 +14,15 @@ import (
 	"syscall"
 
 	"github.com/c-bata/go-prompt"
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/internal/spec"
-	"github.com/influxdata/flux/interpreter"
-	"github.com/influxdata/flux/libflux/go/libflux"
-	"github.com/influxdata/flux/memory"
-	"github.com/influxdata/flux/runtime"
-	"github.com/influxdata/flux/semantic"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/internal/spec"
+	"github.com/wolffcm/flux/interpreter"
+	"github.com/wolffcm/flux/libflux/go/libflux"
+	"github.com/wolffcm/flux/memory"
+	"github.com/wolffcm/flux/runtime"
+	"github.com/wolffcm/flux/semantic"
+	"github.com/wolffcm/flux/values"
 )
 
 type REPL struct {

@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/dave/jennifer/jen"
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/internal/errors"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/internal/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -47,10 +47,10 @@ func init() {
 }
 
 const (
-	semPath    = "github.com/influxdata/flux/semantic"
-	fbsemPath  = "github.com/influxdata/flux/internal/fbsemantic"
-	errorsPath = "github.com/influxdata/flux/internal/errors"
-	codesPath  = "github.com/influxdata/flux/codes"
+	semPath    = "github.com/wolffcm/flux/semantic"
+	fbsemPath  = "github.com/wolffcm/flux/internal/fbsemantic"
+	errorsPath = "github.com/wolffcm/flux/internal/errors"
+	codesPath  = "github.com/wolffcm/flux/codes"
 )
 
 func generateSemantic(cmd *cobra.Command, args []string) error {

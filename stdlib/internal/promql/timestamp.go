@@ -3,12 +3,12 @@ package promql
 import (
 	"fmt"
 
-	"github.com/influxdata/flux/runtime"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux/runtime"
+	"github.com/wolffcm/flux/values"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/plan"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/plan"
 )
 
 const (

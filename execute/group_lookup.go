@@ -3,7 +3,7 @@ package execute
 import (
 	"sort"
 
-	"github.com/influxdata/flux"
+	"github.com/wolffcm/flux"
 )
 
 // GroupLookup is a container that maps group keys to a value.

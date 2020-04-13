@@ -1,8 +1,8 @@
 package influxdb
 
 import (
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/runtime"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/runtime"
 )
 
 // ToKind is the kind for the `to` flux function

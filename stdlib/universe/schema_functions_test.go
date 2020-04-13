@@ -5,16 +5,16 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/dependencies/dependenciestest"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/execute/executetest"
-	"github.com/influxdata/flux/interpreter"
-	"github.com/influxdata/flux/plan"
-	"github.com/influxdata/flux/querytest"
-	"github.com/influxdata/flux/stdlib/influxdata/influxdb"
-	"github.com/influxdata/flux/stdlib/universe"
-	"github.com/influxdata/flux/values/valuestest"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/dependencies/dependenciestest"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/execute/executetest"
+	"github.com/wolffcm/flux/interpreter"
+	"github.com/wolffcm/flux/plan"
+	"github.com/wolffcm/flux/querytest"
+	"github.com/wolffcm/flux/stdlib/influxdata/influxdb"
+	"github.com/wolffcm/flux/stdlib/universe"
+	"github.com/wolffcm/flux/values/valuestest"
 )
 
 func TestSchemaMutions_NewQueries(t *testing.T) {
@@ -1474,7 +1474,7 @@ func TestDropRenameKeep_Process(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Skip("https://github.com/influxdata/flux/issues/2490")
+			t.Skip("https://github.com/wolffcm/flux/issues/2490")
 			executetest.ProcessTestHelper(
 				t,
 				tc.data,

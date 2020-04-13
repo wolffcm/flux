@@ -6,8 +6,8 @@ import (
 	"runtime/debug"
 	"sync"
 
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/internal/errors"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/internal/errors"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )

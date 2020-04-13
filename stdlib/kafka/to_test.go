@@ -7,16 +7,16 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/influxdata/flux"
-	_ "github.com/influxdata/flux/builtin" // We need to import the builtins for the tests to work.
-	"github.com/influxdata/flux/dependencies/dependenciestest"
-	"github.com/influxdata/flux/dependencies/url"
-	"github.com/influxdata/flux/execute"
-	"github.com/influxdata/flux/execute/executetest"
-	"github.com/influxdata/flux/plan"
-	"github.com/influxdata/flux/querytest"
-	"github.com/influxdata/flux/stdlib/influxdata/influxdb"
-	fkafka "github.com/influxdata/flux/stdlib/kafka"
+	"github.com/wolffcm/flux"
+	_ "github.com/wolffcm/flux/builtin" // We need to import the builtins for the tests to work.
+	"github.com/wolffcm/flux/dependencies/dependenciestest"
+	"github.com/wolffcm/flux/dependencies/url"
+	"github.com/wolffcm/flux/execute"
+	"github.com/wolffcm/flux/execute/executetest"
+	"github.com/wolffcm/flux/plan"
+	"github.com/wolffcm/flux/querytest"
+	"github.com/wolffcm/flux/stdlib/influxdata/influxdb"
+	fkafka "github.com/wolffcm/flux/stdlib/kafka"
 	"github.com/segmentio/kafka-go"
 )
 

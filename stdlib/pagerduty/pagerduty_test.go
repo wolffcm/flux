@@ -10,17 +10,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/influxdata/flux"
-	_ "github.com/influxdata/flux/builtin"
-	_ "github.com/influxdata/flux/csv"
-	"github.com/influxdata/flux/dependencies/dependenciestest"
-	"github.com/influxdata/flux/lang"
-	"github.com/influxdata/flux/memory"
-	"github.com/influxdata/flux/runtime"
+	"github.com/wolffcm/flux"
+	_ "github.com/wolffcm/flux/builtin"
+	_ "github.com/wolffcm/flux/csv"
+	"github.com/wolffcm/flux/dependencies/dependenciestest"
+	"github.com/wolffcm/flux/lang"
+	"github.com/wolffcm/flux/memory"
+	"github.com/wolffcm/flux/runtime"
 )
 
 func TestPagerduty(t *testing.T) {
-	t.Skip("https://github.com/influxdata/flux/issues/2532")
+	t.Skip("https://github.com/wolffcm/flux/issues/2532")
 	ctx := dependenciestest.Default().Inject(context.Background())
 	_, _, err := runtime.Eval(ctx, `
 import "csv"

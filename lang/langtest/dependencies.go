@@ -1,8 +1,8 @@
 package langtest
 
 import (
-	"github.com/influxdata/flux/lang"
-	"github.com/influxdata/flux/memory"
+	"github.com/wolffcm/flux/lang"
+	"github.com/wolffcm/flux/memory"
 )
 
 func DefaultExecutionDependencies() lang.ExecutionDependencies {

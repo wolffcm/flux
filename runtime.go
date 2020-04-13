@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/influxdata/flux/interpreter"
-	"github.com/influxdata/flux/semantic"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux/interpreter"
+	"github.com/wolffcm/flux/semantic"
+	"github.com/wolffcm/flux/values"
 )
 
 // Runtime encapsulates the operations supported by the flux runtime.

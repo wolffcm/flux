@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/influxdata/flux/runtime"
-	"github.com/influxdata/flux/values"
+	"github.com/wolffcm/flux/runtime"
+	"github.com/wolffcm/flux/values"
 )
 
 var systemTimeFuncName = "time"

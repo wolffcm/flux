@@ -4,9 +4,9 @@ import (
 	stderrors "errors"
 	"testing"
 
-	"github.com/influxdata/flux"
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/internal/errors"
+	"github.com/wolffcm/flux"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/internal/errors"
 )
 
 func TestErrorString(t *testing.T) {

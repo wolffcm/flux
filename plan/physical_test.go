@@ -4,8 +4,8 @@ import (
 	"math"
 	"testing"
 
-	"github.com/influxdata/flux/plan"
-	"github.com/influxdata/flux/plan/plantest"
+	"github.com/wolffcm/flux/plan"
+	"github.com/wolffcm/flux/plan/plantest"
 )
 
 func TestPhysicalOptions(t *testing.T) {

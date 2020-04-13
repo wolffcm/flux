@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/influxdata/flux/builtin"
-	"github.com/influxdata/flux/dependencies/dependenciestest"
-	"github.com/influxdata/flux/internal/spec"
-	"github.com/influxdata/flux/runtime"
+	_ "github.com/wolffcm/flux/builtin"
+	"github.com/wolffcm/flux/dependencies/dependenciestest"
+	"github.com/wolffcm/flux/internal/spec"
+	"github.com/wolffcm/flux/runtime"
 )
 
 func Benchmark_FromScript(b *testing.B) {

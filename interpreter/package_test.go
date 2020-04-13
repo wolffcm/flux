@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"testing"
 
-	_ "github.com/influxdata/flux/builtin"
-	"github.com/influxdata/flux/codes"
-	"github.com/influxdata/flux/dependencies/dependenciestest"
-	"github.com/influxdata/flux/internal/errors"
-	"github.com/influxdata/flux/interpreter"
-	"github.com/influxdata/flux/interpreter/interptest"
-	"github.com/influxdata/flux/runtime"
-	"github.com/influxdata/flux/semantic"
-	"github.com/influxdata/flux/values"
+	_ "github.com/wolffcm/flux/builtin"
+	"github.com/wolffcm/flux/codes"
+	"github.com/wolffcm/flux/dependencies/dependenciestest"
+	"github.com/wolffcm/flux/internal/errors"
+	"github.com/wolffcm/flux/interpreter"
+	"github.com/wolffcm/flux/interpreter/interptest"
+	"github.com/wolffcm/flux/runtime"
+	"github.com/wolffcm/flux/semantic"
+	"github.com/wolffcm/flux/values"
 )
 
 // Implementation of interpreter.Importer
@@ -38,7 +38,7 @@ func (imp *importer) ImportPackageObject(path string) (*interpreter.Package, err
 }
 
 func TestAccessNestedImport(t *testing.T) {
-	t.Skip("Handle imports for user-defined packages https://github.com/influxdata/flux/issues/2343")
+	t.Skip("Handle imports for user-defined packages https://github.com/wolffcm/flux/issues/2343")
 	// package a
 	// x = 0
 	packageA := interpreter.NewPackageWithValues("a", "", values.NewObjectWithValues(map[string]values.Value{
@@ -385,7 +385,7 @@ func TestInterpreter_MutateOption(t *testing.T) {
 }
 
 func TestInterpreter_SetQualifiedOption(t *testing.T) {
-	t.Skip("Handle imports for user-defined packages https://github.com/influxdata/flux/issues/2343")
+	t.Skip("Handle imports for user-defined packages https://github.com/wolffcm/flux/issues/2343")
 	externalPackage := interpreter.NewPackage("alert")
 	values.SetOption(externalPackage, "state", values.NewString("Warning"))
 	importer := &importer{

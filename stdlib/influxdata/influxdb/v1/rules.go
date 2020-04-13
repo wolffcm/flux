@@ -1,6 +1,6 @@
 package v1
 
-import "github.com/influxdata/flux/plan"
+import "github.com/wolffcm/flux/plan"
 
 type DatabasesRemoteRule struct{}
 
