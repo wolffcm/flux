@@ -1,6 +1,6 @@
 package scanner
 
-import "github.com/influxdata/flux/internal/token"
+import "github.com/wolffcm/flux/internal/token"
 
 %%{
     machine flux;
